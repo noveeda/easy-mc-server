@@ -1,12 +1,37 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { existsSync, readFileSync } from "node:fs";
 import {
+  ClientJoinStates,
   LoopbackFailureReasons,
   createDisconnectRetryPlan,
+  createClientJoinState,
   createClientLoopbackPlan,
   createLocalEchoSimulation,
   redactLoopbackDiagnostics
 } from "../src/connection/loopback-plan.mjs";
+
+test("Fabric client connection mod skeleton declares supported mod metadata", () => {
+  assert.equal(existsSync("mods/client-fabric/src/main/java/com/easymc/room/client/LocalRoomClientMod.java"), true);
+
+  const metadata = JSON.parse(readFileSync("mods/client-fabric/src/main/resources/fabric.mod.json", "utf8"));
+  assert.deepEqual(
+    {
+      id: metadata.id,
+      environment: metadata.environment,
+      minecraft: metadata.depends.minecraft,
+      fabricloader: metadata.depends.fabricloader,
+      entrypoint: metadata.entrypoints.client[0]
+    },
+    {
+      id: "easy_mc_room_client",
+      environment: "client",
+      minecraft: "1.21.1",
+      fabricloader: ">=0.16.10",
+      entrypoint: "com.easymc.room.client.LocalRoomClientMod"
+    }
+  );
+});
 
 test("client loopback plan connects Minecraft to localhost and relay to the approved room", () => {
   const plan = createClientLoopbackPlan({
@@ -252,5 +277,43 @@ test("disconnect retries are bounded and expose failure state", () => {
       maxAttempts: 3,
       baseDelayMs: 50
     }
+  });
+});
+
+test("client join states cover invite, approval, host, and connection failures", () => {
+  assert.deepEqual(createClientJoinState({}), {
+    state: ClientJoinStates.INVITE_MISSING,
+    title: "초대 정보가 없습니다.",
+    primaryAction: "open_invite_again"
+  });
+  assert.deepEqual(createClientJoinState({ inviteToken: "invite-a", inviteStatus: "expired" }), {
+    state: ClientJoinStates.INVITE_EXPIRED,
+    title: "초대 시간이 지났습니다.",
+    primaryAction: "ask_host_for_new_invite"
+  });
+  assert.deepEqual(createClientJoinState({ inviteToken: "invite-a", inviteStatus: "revoked" }), {
+    state: ClientJoinStates.INVITE_REVOKED,
+    title: "호스트가 새 초대를 만들었습니다.",
+    primaryAction: "ask_host_for_new_invite"
+  });
+  assert.deepEqual(createClientJoinState({ inviteToken: "invite-a", approvalStatus: "pending" }), {
+    state: ClientJoinStates.APPROVAL_PENDING,
+    title: "호스트 승인을 기다리는 중입니다.",
+    primaryAction: "wait"
+  });
+  assert.deepEqual(createClientJoinState({ inviteToken: "invite-a", approvalStatus: "host_unavailable" }), {
+    state: ClientJoinStates.HOST_UNAVAILABLE,
+    title: "방이 아직 열려 있지 않습니다.",
+    primaryAction: "try_later"
+  });
+  assert.deepEqual(createClientJoinState({ inviteToken: "invite-a", connectionStatus: "failed" }), {
+    state: ClientJoinStates.CONNECTION_FAILED,
+    title: "방 연결이 끊겼습니다.",
+    primaryAction: "retry_connection"
+  });
+  assert.deepEqual(createClientJoinState({ inviteToken: "invite-a" }), {
+    state: ClientJoinStates.READY,
+    title: "방에 들어갈 준비가 됐습니다.",
+    primaryAction: "join_room"
   });
 });

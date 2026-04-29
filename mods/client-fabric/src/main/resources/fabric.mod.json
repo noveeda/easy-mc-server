@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "easy_mc_room_client",
+  "version": "0.1.0-alpha",
+  "name": "Easy MC Room Client",
+  "description": "Client-side room connection bridge for approved private rooms.",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "com.easymc.room.client.LocalRoomClientMod"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.16.10",
+    "minecraft": "1.21.1"
+  }
+}

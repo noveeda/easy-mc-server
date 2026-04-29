@@ -34,6 +34,10 @@ Prove that a friend client mod can join the host's local room through loopback p
 - [x] Relay simulation calls a session validation boundary and refuses replay or invite rebinding.
 - [x] Relay and client loopback echo simulations prove approved friend payloads reach the host stream without opening real sockets.
 - [x] Relay metrics and bounded disconnect retry states are covered by executable tests.
+- [x] Host tunnel intent binds the desktop room to `127.0.0.1:25565` and redacts tunnel credentials from diagnostics.
+- [x] Relay host tunnels require a room-bound host credential and cannot be overwritten by another host.
+- [x] Relay friend streams require the approved session host to match the active host tunnel.
+- [x] Client join state model covers missing, expired, revoked invite, approval pending, host unavailable, and connection failure states.
 
 ## Protocol And Session TODO
 
@@ -41,6 +45,7 @@ Prove that a friend client mod can join the host's local room through loopback p
 - [x] Add session validation endpoint or service call for relay authorization.
 - [x] Bind relay sessions to approved room, invite, Minecraft UUID, and expiry.
 - [x] Refuse expired, revoked, cross-room, wrong-UUID, and replayed session attempts.
+- [x] Require authoritative session validation to consume first-use sessions.
 - [x] Make arbitrary TCP destination forwarding impossible.
 - [x] Add redaction rules for relay logs and errors.
 
@@ -49,6 +54,7 @@ Prove that a friend client mod can join the host's local room through loopback p
 - [x] Scaffold relay service in `services/relay/`.
 - [ ] Accept authenticated room stream connections from host app.
 - [ ] Accept authenticated room stream connections from client mod.
+- [x] Define authenticated host tunnel and friend stream open contracts.
 - [x] Pair host and friend streams only for valid room/session targets.
 - [ ] Forward Minecraft TCP bytes without inspecting game payload.
 - [x] Enforce total room size of 10 players including host.
@@ -57,26 +63,27 @@ Prove that a friend client mod can join the host's local room through loopback p
 - [x] Emit warning at 25 GB per room session.
 - [x] Enforce 40 GB hard cap per room session.
 - [x] Enforce 150 GB monthly relay cap per host during closed alpha.
-- [x] Enforce invite expiry and approval-request rate-limit guardrails.
+- [x] Refuse expired/revoked/unapproved session results from the control-plane boundary.
+- [ ] Verify approval-request rate-limit guardrails through real relay/control-plane integration.
 - [x] Emit minimal metrics: active rooms, room-hours, disconnects, bytes, and quota stops.
 
 ## Client Mod TODO
 
-- [ ] Add Fabric client connection mod skeleton for the supported Minecraft/Fabric version.
+- [x] Add Fabric client connection mod skeleton for the supported Minecraft/Fabric version.
 - [x] Open `127.0.0.1:<ephemeral>` as the friend-facing Minecraft server target.
 - [x] Bind the loopback proxy to a relay session from the invite-linked pack.
-- [ ] Show missing, empty, expired, or revoked invite state in Minecraft.
-- [ ] Show host approval pending as an intentional wait state.
+- [x] Show missing, empty, expired, or revoked invite state in Minecraft.
+- [x] Show host approval pending as an intentional wait state.
 - [x] Avoid writing invite/session tokens to logs, crash reports, or visible dumps.
 - [x] Handle relay disconnect with bounded retry and clear room-language failure.
 
 ## Host Tunnel TODO
 
-- [ ] Add host app tunnel component that connects the local Fabric server to relay.
+- [x] Add host app tunnel intent component that connects the local Fabric server to relay.
 - [x] Bind host tunnel to the active room only.
 - [x] Stop relay stream when the local room stops.
-- [ ] Surface relay status in the host UI without exposing network terminology by default.
-- [ ] Send disconnect/quota states back to desktop UI.
+- [x] Surface relay status in the host UI without exposing network terminology by default.
+- [x] Send disconnect/quota states back to desktop UI.
 
 ## End-To-End TODO
 
@@ -90,7 +97,8 @@ Prove that a friend client mod can join the host's local room through loopback p
 
 - [ ] Friend client mod reaches the host room through relay in a small multiplayer session.
 - [x] Relay refuses unauthenticated, expired, cross-room, wrong-UUID, and arbitrary TCP attempts.
-- [x] Total room size, session duration, idle timeout, bandwidth caps, monthly cap, invite expiry, and approval-request rate limits are enforced.
+- [x] Total room size, session duration, idle timeout, bandwidth caps, monthly cap, invite expiry, and relay-denied sessions are enforced.
+- [ ] Approval-request rate limits are verified through real relay/control-plane integration.
 - [x] Relay disconnects trigger bounded retry and a user-facing room-connection failure state.
 - [x] Minimal relay metrics exist for alpha operations.
 
@@ -100,7 +108,7 @@ Prove that a friend client mod can join the host's local room through loopback p
 - [x] Open-proxy guard tests.
 - [x] Quota tests.
 - [x] Client mod loopback tests or gametests.
-- [ ] Host tunnel integration tests.
+- [x] Host tunnel integration tests.
 - [ ] Manual two-client Minecraft room test.
 - [x] `npm run test`
 - [x] `git diff --check`

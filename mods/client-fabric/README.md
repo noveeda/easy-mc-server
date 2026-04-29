@@ -1,6 +1,6 @@
 # Client Fabric Mod
 
-Client mod implementation starts after M2 protocol and control-plane contracts are stable.
+Client mod implementation starts from the M4 skeleton in `src/main/`. The Java files are not a full buildable Loom project yet, but they pin the supported mod id, Fabric/Minecraft metadata, and `relay.m4` runtime descriptor.
 
 The mod will use the invite/session protocol to show approval waiting states and connect through the approved room connection path.
 
@@ -11,3 +11,5 @@ The mod will use the invite/session protocol to show approval waiting states and
 The client connects Minecraft to `127.0.0.1:25565` and lets the mod-owned loopback proxy connect to the approved `relay.m4` session. The relay open frame carries the room, invite, friend, Minecraft UUID, session, and local Minecraft target binding while blocking arbitrary local TCP targets.
 
 `createLocalEchoSimulation()` and `createDisconnectRetryPlan()` are executable contracts for friend-to-host stream delivery and bounded disconnect retry/failure state without opening sockets. Diagnostic output must redact invite, session, and relay tokens before it can be logged or sent to support.
+
+`createClientJoinState()` defines the in-Minecraft room-language states for missing, expired, revoked invite, host approval pending, host unavailable, and connection failure cases.

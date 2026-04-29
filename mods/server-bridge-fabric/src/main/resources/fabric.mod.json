@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "easy_mc_room_server_bridge",
+  "version": "0.1.0-alpha",
+  "name": "Easy MC Room Server Bridge",
+  "description": "Server-side approval bridge for private local rooms.",
+  "environment": "server",
+  "entrypoints": {
+    "server": [
+      "com.easymc.room.server.LocalRoomServerBridgeMod"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.16.10",
+    "minecraft": "1.21.1"
+  }
+}

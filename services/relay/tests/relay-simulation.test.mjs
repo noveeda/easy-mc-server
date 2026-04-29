@@ -33,6 +33,9 @@ function createOpenRelay(options = {}) {
   const clock = options.clock ?? createRelayClock(0);
   const relay = createRelaySimulation({
     clock,
+    hostCredentials: {
+      "room-a:host-a": "host-token-a"
+    },
     quotas: {
       maxRoomMembers: 2,
       maxSessionMs: 15 * 60 * 1000,
@@ -46,6 +49,7 @@ function createOpenRelay(options = {}) {
   const tunnel = relay.openHostTunnel({
     hostId: "host-a",
     roomId: "room-a",
+    hostToken: "host-token-a",
     target: HOST_TARGET
   });
   assert.equal(tunnel.ok, true);
@@ -86,6 +90,47 @@ test("approved relay session pairs friend stream with host room target", () => {
   assert.match(stream.stream.tunnelId, /^relay_tunnel_/);
 });
 
+test("host tunnels require the room host credential and cannot be overwritten by another host", () => {
+  const relay = createRelaySimulation({
+    clock: createRelayClock(0),
+    hostCredentials: {
+      "room-a:host-a": "host-token-a",
+      "room-a:host-b": "host-token-b"
+    }
+  });
+
+  assert.deepEqual(
+    relay.openHostTunnel({
+      hostId: "host-a",
+      roomId: "room-a",
+      hostToken: "wrong-token",
+      target: HOST_TARGET
+    }),
+    { ok: false, reason: RelayFailureReasons.HOST_TUNNEL_UNAUTHORIZED }
+  );
+
+  assert.equal(relay.openHostTunnel({
+    hostId: "host-a",
+    roomId: "room-a",
+    hostToken: "host-token-a",
+    target: HOST_TARGET
+  }).ok, true);
+
+  assert.deepEqual(
+    relay.openHostTunnel({
+      hostId: "host-b",
+      roomId: "room-a",
+      hostToken: "host-token-b",
+      target: HOST_TARGET
+    }),
+    { ok: false, reason: RelayFailureReasons.HOST_TUNNEL_CONFLICT }
+  );
+  assert.deepEqual(relay.closeHostTunnel({ roomId: "room-a", hostId: "host-b", hostToken: "host-token-b" }), {
+    ok: false,
+    reason: RelayFailureReasons.HOST_TUNNEL_UNAUTHORIZED
+  });
+});
+
 test("relay authorization fails closed for missing, expired, cross-room, wrong-friend, and wrong-UUID sessions", () => {
   const clock = createRelayClock(0);
   const { relay } = createOpenRelay({ clock });
@@ -94,6 +139,16 @@ test("relay authorization fails closed for missing, expired, cross-room, wrong-f
     sessionId: "expired-session",
     sessionToken: "expired-token",
     expiresAt: 1000
+  }));
+  relay.authorizeSession(createApprovedSession({
+    sessionId: "wrong-host-session",
+    sessionToken: "wrong-host-token",
+    hostId: "host-b"
+  }));
+  relay.authorizeSession(createApprovedSession({
+    sessionId: "revoked-session",
+    sessionToken: "revoked-token",
+    approved: false
   }));
 
   assert.deepEqual(
@@ -154,12 +209,39 @@ test("relay authorization fails closed for missing, expired, cross-room, wrong-f
     }),
     { ok: false, reason: RelayFailureReasons.WRONG_UUID }
   );
+
+  assert.deepEqual(
+    relay.openFriendStream({
+      roomId: "room-a",
+      inviteId: "invite-a",
+      friendId: "friend-a",
+      minecraftUuid: "uuid-a",
+      sessionId: "wrong-host-session",
+      sessionToken: "wrong-host-token"
+    }),
+    { ok: false, reason: RelayFailureReasons.WRONG_HOST }
+  );
+
+  assert.deepEqual(
+    relay.openFriendStream({
+      roomId: "room-a",
+      inviteId: "invite-a",
+      friendId: "friend-a",
+      minecraftUuid: "uuid-a",
+      sessionId: "revoked-session",
+      sessionToken: "revoked-token"
+    }),
+    { ok: false, reason: RelayFailureReasons.UNAUTHENTICATED }
+  );
 });
 
 test("relay validates sessions through the service boundary and refuses replay or invite rebinding", () => {
   const calls = [];
   const relay = createRelaySimulation({
     clock: createRelayClock(0),
+    hostCredentials: {
+      "room-a:host-a": "host-token-a"
+    },
     sessionService: {
       validateSession(request) {
         calls.push(request);
@@ -170,7 +252,7 @@ test("relay validates sessions through the service boundary and refuses replay o
       }
     }
   });
-  assert.equal(relay.openHostTunnel({ hostId: "host-a", roomId: "room-a", target: HOST_TARGET }).ok, true);
+  assert.equal(relay.openHostTunnel({ hostId: "host-a", roomId: "room-a", hostToken: "host-token-a", target: HOST_TARGET }).ok, true);
 
   const first = relay.openFriendStream({
     roomId: "room-a",
@@ -188,14 +270,16 @@ test("relay validates sessions through the service boundary and refuses replay o
       roomId: calls[0].roomId,
       inviteId: calls[0].inviteId,
       friendId: calls[0].friendId,
-      minecraftUuid: calls[0].minecraftUuid
+      minecraftUuid: calls[0].minecraftUuid,
+      consume: calls[0].consume
     },
     {
       sessionId: "session-a",
       roomId: "room-a",
       inviteId: "invite-a",
       friendId: "friend-a",
-      minecraftUuid: "uuid-a"
+      minecraftUuid: "uuid-a",
+      consume: true
     }
   );
 
@@ -229,6 +313,9 @@ test("relay validates sessions through the service boundary and refuses replay o
 test("relay accepts asynchronous session validation service calls", async () => {
   const relay = createRelaySimulation({
     clock: createRelayClock(0),
+    hostCredentials: {
+      "room-a:host-a": "host-token-a"
+    },
     sessionService: {
       async validateSession() {
         return {
@@ -238,7 +325,7 @@ test("relay accepts asynchronous session validation service calls", async () => 
       }
     }
   });
-  assert.equal(relay.openHostTunnel({ hostId: "host-a", roomId: "room-a", target: HOST_TARGET }).ok, true);
+  assert.equal(relay.openHostTunnel({ hostId: "host-a", roomId: "room-a", hostToken: "host-token-a", target: HOST_TARGET }).ok, true);
 
   const stream = await relay.openFriendStream({
     roomId: "room-a",
@@ -287,7 +374,7 @@ test("host tunnel lifecycle closes active streams and blocks later joins", () =>
     sessionToken: "session-token-a"
   });
 
-  const closed = relay.closeHostTunnel({ tunnelId: tunnel.tunnel.id, reason: "host_shutdown" });
+  const closed = relay.closeHostTunnel({ tunnelId: tunnel.tunnel.id, hostToken: "host-token-a", reason: "host_shutdown" });
   assert.equal(closed.ok, true);
   assert.equal(closed.closedStreams, 1);
   assert.equal(closed.tunnel.state, "closed");
@@ -373,14 +460,48 @@ test("relay diagnostic redaction removes secrets from errors and logs", () => {
   const redacted = redactRelayDiagnostics({
     sessionToken: "session-token-a",
     inviteToken: "invite-secret-a",
+    authorization: "Bearer auth-secret",
+    cookie: "sid=cookie-secret",
     message: "session=session-token-a relayToken=relay-secret-a"
   });
 
   assert.deepEqual(redacted, {
     sessionToken: "[redacted:relay_secret]",
     inviteToken: "[redacted:relay_secret]",
+    authorization: "[redacted:relay_secret]",
+    cookie: "[redacted:relay_secret]",
     message: "session=[redacted:relay_secret] relayToken=[redacted:relay_secret]"
   });
+});
+
+test("failed stream opens log only an allowlisted diagnostic shape", () => {
+  const { relay } = createOpenRelay();
+
+  relay.openFriendStream({
+    roomId: "room-a",
+    inviteId: "invite-a",
+    friendId: "friend-a",
+    minecraftUuid: "uuid-a",
+    sessionId: "session-a",
+    sessionToken: "session-token-a",
+    headers: {
+      authorization: "Bearer auth-secret",
+      cookie: "sid=cookie-secret"
+    }
+  });
+
+  const failedEvent = relay.readEventLog().find((event) => event.type === "friend_stream_open_failed");
+
+  assert.deepEqual(failedEvent.metadata, {
+    reason: RelayFailureReasons.UNAUTHENTICATED,
+    roomId: "room-a",
+    inviteId: "invite-a",
+    friendId: "friend-a",
+    minecraftUuid: "uuid-a"
+  });
+  assert.equal(JSON.stringify(failedEvent).includes("session-token-a"), false);
+  assert.equal(JSON.stringify(failedEvent).includes("auth-secret"), false);
+  assert.equal(JSON.stringify(failedEvent).includes("cookie-secret"), false);
 });
 
 test("room size quota is enforced", () => {
@@ -419,11 +540,15 @@ test("room size quota is enforced", () => {
 
 test("default room size allows 9 friends for 10 total players including host", () => {
   const relay = createRelaySimulation({
-    clock: createRelayClock(0)
+    clock: createRelayClock(0),
+    hostCredentials: {
+      "room-a:host-a": "host-token-a"
+    }
   });
   const tunnel = relay.openHostTunnel({
     hostId: "host-a",
     roomId: "room-a",
+    hostToken: "host-token-a",
     target: HOST_TARGET
   });
   assert.equal(tunnel.ok, true);
@@ -482,6 +607,7 @@ test("duration, idle, room bandwidth, and monthly host quotas are enforced", () 
     }),
     { ok: false, reason: RelayFailureReasons.SESSION_DURATION_QUOTA }
   );
+  assert.equal(durationRelay.readMetrics().roomHours, 1001 / (60 * 60 * 1000));
 
   const idleClock = createRelayClock(0);
   const idleRelay = createOpenRelay({
@@ -517,6 +643,7 @@ test("duration, idle, room bandwidth, and monthly host quotas are enforced", () 
     ok: false,
     reason: RelayFailureReasons.ROOM_BANDWIDTH_QUOTA
   });
+  assert.equal(roomRelay.readMetrics().quotaStops, 1);
 
   const hostRelay = createOpenRelay({ quotas: { maxMonthlyHostBytes: 10 } }).relay;
   hostRelay.authorizeSession(createApprovedSession());

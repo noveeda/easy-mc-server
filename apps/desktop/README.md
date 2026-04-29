@@ -19,7 +19,7 @@ Default UI should keep using room language and avoid explaining ports, firewall 
 
 ## M3 Host Runtime Contract
 
-`src/runtime/host-runtime.mjs` is the executable M3 contract for later Tauri and Minecraft adapters. It is dependency-free and does not start Java, Fabric, or Minecraft directly.
+`src/runtime/host-runtime.mjs` is the executable M3 contract for later Tauri and Minecraft adapters. `src/runtime/local-runtime-adapter.mjs` turns that validated room plan into concrete file materialization, Fabric download, and local process intents. `src/tunnel/host-tunnel.mjs` adds the M4 host-side room connection intent for the later relay adapter. These modules are dependency-free and do not start Java, Fabric, Minecraft, or network sockets directly.
 
 The contract covers:
 
@@ -32,6 +32,10 @@ The contract covers:
 7. Redacted log streaming for tokens, invites, email addresses, and UUIDs.
 8. Room-language failure states.
 9. Approval UI states that require a server-observed Minecraft UUID before host approval.
+10. Local room materialization for EULA, `server.properties`, preserved `whitelist.json`, bridge config, runtime manifest, and fixed-pack mod copy operations.
+11. Checksum-gated Fabric server download from Fabric Meta metadata.
+12. Tauri process intents for start, stop, and restart.
+13. Host tunnel intent that binds the active room to `127.0.0.1:25565`, closes when the local room stops, and shows room-language connection/quota states.
 
 Failures return room-language messages that the desktop UI can show directly. Bridge approval events must use the server-observed Minecraft UUID; a claimed identity from the client can be displayed for context but cannot approve or bypass the room queue.
 

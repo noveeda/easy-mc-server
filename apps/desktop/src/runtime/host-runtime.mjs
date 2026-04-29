@@ -118,6 +118,8 @@ export function createHostRuntimePlan(input = {}) {
       fabric: {
         loaderVersion: loader.loader.version,
         installerVerified: true,
+        installerSha256: loader.loader.installerSha256,
+        serverJarSha256: loader.loader.serverJarSha256,
         launcherJar: joinPath(layout.runtime, loader.loader.launcherJar),
         metadataPath: joinPath(layout.metadata, `fabric-${selectedMinecraft.version}.json`)
       },
@@ -190,6 +192,7 @@ export function resolveFabricLoader(input = {}) {
       minecraftVersion: loader.minecraftVersion ?? input.minecraftVersion,
       version: loader.version,
       installerSha256: loader.installerSha256,
+      serverJarSha256: loader.serverJarSha256,
       launcherJar: loader.launcherJar ?? `fabric-server-${input.minecraftVersion}-${loader.version}.jar`
     }
   };
@@ -373,7 +376,7 @@ export function createBridgeApprovalEvent(input = {}) {
     minecraftUuid: input.serverObservedUuid,
     claimedMinecraftUuid,
     requiresHostApproval: true,
-    identityMismatch: claimedMinecraftUuid !== input.serverObservedUuid
+    identityMismatch: Boolean(claimedMinecraftUuid && claimedMinecraftUuid !== input.serverObservedUuid)
   };
 }
 
@@ -465,7 +468,7 @@ export function createApprovalUiState(input = {}) {
     title: `${input.displayName} 님이 기다리고 있습니다.`,
     primaryAction: "approve",
     secondaryAction: "deny",
-    identityMismatch: input.claimedMinecraftUuid !== input.serverObservedUuid
+    identityMismatch: Boolean(input.claimedMinecraftUuid && input.claimedMinecraftUuid !== input.serverObservedUuid)
   };
 }
 

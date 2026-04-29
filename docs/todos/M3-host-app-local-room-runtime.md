@@ -33,6 +33,10 @@ Let the host create and run a local Fabric room from the Windows desktop app wit
 - [x] Server bridge approval event contract uses server-observed Minecraft UUID.
 - [x] Claimed client identity cannot bypass server-observed UUID approval.
 - [x] Approval UI state model covers waiting, pending review, approved, denied, blocked, expired, host unavailable, already allowed, and identity changed states.
+- [x] Local runtime adapter contract materializes EULA, `server.properties`, preserved `whitelist.json`, bridge config, runtime manifest, and fixed-pack mod copy operations.
+- [x] Fabric server artifact download contract uses the known Fabric Meta source and fails closed without a pinned server JAR checksum.
+- [x] Local process intent contract covers start, stop, and restart for the later Tauri process adapter.
+- [x] Server bridge state model covers allowlist persistence, denied/blocked messages, outage behavior, and health snapshots.
 
 ## Desktop Runtime TODO
 
@@ -47,13 +51,15 @@ Checked items in this section are executable runtime contracts unless they expli
 - [x] Apply the Java compatibility rule for the selected Minecraft version.
 - [x] Prompt Java installation only when no compatible runtime exists.
 - [ ] Download Fabric server artifacts from known sources.
-- [x] Verify Fabric/server artifact checksums before use.
+- [x] Define checksum-gated Fabric server artifact download intent from known sources.
+- [ ] Verify downloaded Fabric/server artifact checksums before use in the real bootstrap adapter.
 - [x] Cache verified downloads with immutable version metadata.
 - [x] Generate local room folder structure.
 - [x] Persist EULA consent from the GUI before server start.
 - [x] Generate `server.properties` from room-safe defaults.
 - [x] Install the selected fixed pack into the local room folder.
 - [ ] Start, stop, and restart the local Fabric server process.
+- [x] Define local process start, stop, and restart intents for the desktop adapter.
 - [x] Stream redacted server logs to the host UI.
 - [x] Detect crash, offline download, checksum failure, missing Java, and incompatible Java states.
 - [x] Show room-language recovery actions for each failure state.
@@ -68,14 +74,14 @@ Checked items in this section are executable runtime contracts unless they expli
 
 ## Fabric Server Bridge TODO
 
-- [ ] Add Fabric server bridge mod skeleton for the supported Minecraft/Fabric version.
+- [x] Add Fabric server bridge mod skeleton for the supported Minecraft/Fabric version.
 - [x] Capture server-observed authenticated Minecraft UUID on join.
 - [x] Prevent claimed client identity from bypassing server-observed UUID.
 - [x] Emit pending approval events for unapproved UUIDs.
-- [ ] Persist approved UUIDs to the room allowlist.
-- [ ] Handle denied and blocked UUIDs with clear in-game messages.
-- [ ] Define behavior during temporary control-plane outage for previously approved players.
-- [ ] Report local room health to the desktop app.
+- [x] Persist approved UUIDs to the room allowlist.
+- [x] Handle denied and blocked UUIDs with clear in-game messages.
+- [x] Define behavior during temporary control-plane outage for previously approved players.
+- [x] Report local room health to the desktop app.
 
 ## Completion Gate
 
@@ -92,7 +98,7 @@ Checked items in this section are executable runtime contracts unless they expli
 - [x] Desktop runtime tests for cache layout, checksum failure, and EULA behavior.
 - [x] Server lifecycle test for start/stop/crash handling.
 - [x] Approval UI tests for pending, approved, denied, blocked, expired, already allowed, and identity changed states.
-- [ ] Server bridge unit or gametest coverage for UUID confirmation and allowlist behavior.
+- [x] Server bridge unit or gametest coverage for UUID confirmation and allowlist behavior.
 - [ ] Manual Windows run from room creation to local server start.
 
 ## Stop Or Pivot

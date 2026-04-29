@@ -48,7 +48,8 @@ const baseInput = Object.freeze({
         minecraftVersion: "1.21.1",
         version: "0.16.10",
         launcherJar: "fabric-server-1.21.1-0.16.10.jar",
-        installerSha256: "fabric-sha"
+        installerSha256: "fabric-sha",
+        serverJarSha256: "fabric-server-sha"
       }
     ]
   },
@@ -122,6 +123,8 @@ test("supported version, Java, EULA, Fabric, cache, and fixed pack produce a run
   assert.deepEqual(result.plan.fabric, {
     loaderVersion: "0.16.10",
     installerVerified: true,
+    installerSha256: "fabric-sha",
+    serverJarSha256: "fabric-server-sha",
     launcherJar: "C:/Users/Alice/AppData/Roaming/RoomBuilder/rooms/room-a/runtime/fabric-server-1.21.1-0.16.10.jar",
     metadataPath: "C:/Users/Alice/AppData/Roaming/RoomBuilder/cache/metadata/fabric-1.21.1.json"
   });
@@ -203,6 +206,7 @@ test("Fabric loader resolution is stable for selected Minecraft version", () => 
         minecraftVersion: "1.21.1",
         version: "0.16.10",
         installerSha256: "fabric-sha",
+        serverJarSha256: "fabric-server-sha",
         launcherJar: "fabric-server-1.21.1-0.16.10.jar"
       }
     }
@@ -453,6 +457,20 @@ test("approval UI state model separates waiting, review, and terminal states", (
     createApprovalUiState({
       connectionId: "conn-a",
       displayName: "MineFriend_27",
+      serverObservedUuid: "server-uuid"
+    }),
+    {
+      state: ApprovalUiStates.NEEDS_REVIEW,
+      title: "MineFriend_27 님이 기다리고 있습니다.",
+      primaryAction: "approve",
+      secondaryAction: "deny",
+      identityMismatch: false
+    }
+  );
+  assert.deepEqual(
+    createApprovalUiState({
+      connectionId: "conn-a",
+      displayName: "MineFriend_27",
       claimedMinecraftUuid: "server-uuid",
       serverObservedUuid: "server-uuid"
     }),
@@ -482,6 +500,11 @@ test("approval UI state model separates waiting, review, and terminal states", (
   assert.deepEqual(createApprovalUiState({ displayName: "MineFriend_27", decision: "approved" }), {
     state: ApprovalUiStates.APPROVED,
     title: "MineFriend_27 님을 승인했습니다.",
+    primaryAction: null
+  });
+  assert.deepEqual(createApprovalUiState({ decision: "denied" }), {
+    state: ApprovalUiStates.DENIED,
+    title: "요청을 거절했습니다.",
     primaryAction: null
   });
   assert.deepEqual(createApprovalUiState({ decision: "blocked" }), {

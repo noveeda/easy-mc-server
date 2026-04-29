@@ -6,6 +6,16 @@ export const LoopbackFailureReasons = Object.freeze({
   DISCONNECT_RETRY_EXHAUSTED: "disconnect_retry_exhausted"
 });
 
+export const ClientJoinStates = Object.freeze({
+  READY: "ready",
+  INVITE_MISSING: "invite_missing",
+  INVITE_EXPIRED: "invite_expired",
+  INVITE_REVOKED: "invite_revoked",
+  APPROVAL_PENDING: "approval_pending",
+  HOST_UNAVAILABLE: "host_unavailable",
+  CONNECTION_FAILED: "connection_failed"
+});
+
 const LOOPBACK_PROTOCOL_VERSION = "relay.m4";
 
 const redactionLabels = Object.freeze({
@@ -98,6 +108,62 @@ export function createClientLoopbackPlan(input = {}) {
       }
     },
     diagnostics
+  };
+}
+
+export function createClientJoinState(input = {}) {
+  if (!input.inviteToken) {
+    return {
+      state: ClientJoinStates.INVITE_MISSING,
+      title: "초대 정보가 없습니다.",
+      primaryAction: "open_invite_again"
+    };
+  }
+
+  if (input.inviteStatus === "expired") {
+    return {
+      state: ClientJoinStates.INVITE_EXPIRED,
+      title: "초대 시간이 지났습니다.",
+      primaryAction: "ask_host_for_new_invite"
+    };
+  }
+
+  if (input.inviteStatus === "revoked") {
+    return {
+      state: ClientJoinStates.INVITE_REVOKED,
+      title: "호스트가 새 초대를 만들었습니다.",
+      primaryAction: "ask_host_for_new_invite"
+    };
+  }
+
+  if (input.approvalStatus === "pending") {
+    return {
+      state: ClientJoinStates.APPROVAL_PENDING,
+      title: "호스트 승인을 기다리는 중입니다.",
+      primaryAction: "wait"
+    };
+  }
+
+  if (input.approvalStatus === "host_unavailable") {
+    return {
+      state: ClientJoinStates.HOST_UNAVAILABLE,
+      title: "방이 아직 열려 있지 않습니다.",
+      primaryAction: "try_later"
+    };
+  }
+
+  if (input.connectionStatus === "failed") {
+    return {
+      state: ClientJoinStates.CONNECTION_FAILED,
+      title: "방 연결이 끊겼습니다.",
+      primaryAction: "retry_connection"
+    };
+  }
+
+  return {
+    state: ClientJoinStates.READY,
+    title: "방에 들어갈 준비가 됐습니다.",
+    primaryAction: "join_room"
   };
 }
 

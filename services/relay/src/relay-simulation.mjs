@@ -8,6 +8,9 @@ export const RelayFailureReasons = Object.freeze({
   SESSION_REPLAYED: "session_replayed",
   WRONG_UUID: "wrong_uuid",
   WRONG_FRIEND: "wrong_friend",
+  WRONG_HOST: "wrong_host",
+  HOST_TUNNEL_UNAUTHORIZED: "host_tunnel_unauthorized",
+  HOST_TUNNEL_CONFLICT: "host_tunnel_conflict",
   HOST_TUNNEL_UNAVAILABLE: "host_tunnel_unavailable",
   HOST_TUNNEL_CLOSED: "host_tunnel_closed",
   OPEN_PROXY_BLOCKED: "open_proxy_blocked",
@@ -48,6 +51,7 @@ export function createRelayClock(initialNow = Date.parse("2026-04-30T00:00:00.00
 export function createRelaySimulation(options = {}) {
   const clock = options.clock ?? createRelayClock();
   const sessionService = options.sessionService;
+  const hostCredentials = normalizeHostCredentials(options.hostCredentials);
   const quotas = {
     ...defaultQuotas,
     ...options.quotas
@@ -66,12 +70,26 @@ export function createRelaySimulation(options = {}) {
     failedOpens: 0,
     bytesRelayed: 0,
     disconnectRetries: 0,
-    disconnectFailures: 0
+    disconnectFailures: 0,
+    quotaStops: 0
   };
 
-  function openHostTunnel({ hostId, roomId, target }) {
+  function openHostTunnel({ hostId, roomId, target, hostToken }) {
+    if (!hostTunnelAuthorized({ hostId, roomId, hostToken })) {
+      return fail(RelayFailureReasons.HOST_TUNNEL_UNAUTHORIZED, { hostId, roomId });
+    }
+
     if (!isMinecraftLoopbackTarget(target)) {
       return fail(RelayFailureReasons.OPEN_PROXY_BLOCKED, { hostId, roomId, target });
+    }
+
+    const existingTunnel = hostTunnels.get(roomId);
+    if (existingTunnel?.state === "open" && existingTunnel.hostId !== hostId) {
+      return fail(RelayFailureReasons.HOST_TUNNEL_CONFLICT, { hostId, roomId });
+    }
+
+    if (existingTunnel?.state === "open") {
+      closeHostTunnel({ tunnelId: existingTunnel.id, hostId, hostToken, reason: "replaced_by_same_host" });
     }
 
     const tunnel = {
@@ -137,6 +155,10 @@ export function createRelaySimulation(options = {}) {
       return failOpen(RelayFailureReasons.HOST_TUNNEL_CLOSED, request);
     }
 
+    if (session.hostId && session.hostId !== tunnel.hostId) {
+      return failOpen(RelayFailureReasons.WRONG_HOST, request);
+    }
+
     if (!targetMatchesTunnel(request.requestedTarget, tunnel.target)) {
       return failOpen(RelayFailureReasons.OPEN_PROXY_BLOCKED, request);
     }
@@ -190,11 +212,13 @@ export function createRelaySimulation(options = {}) {
 
     if (clock.now() - stream.openedAt > quotas.maxSessionMs) {
       closeStream(stream, "session_duration_quota");
+      metrics.quotaStops += 1;
       return fail(RelayFailureReasons.SESSION_DURATION_QUOTA, { streamId });
     }
 
     if (clock.now() - stream.lastActivityAt > quotas.idleTimeoutMs) {
       closeStream(stream, "idle_quota");
+      metrics.quotaStops += 1;
       return fail(RelayFailureReasons.IDLE_QUOTA, { streamId });
     }
 
@@ -202,6 +226,7 @@ export function createRelaySimulation(options = {}) {
 
     if (nextRoomBytes > quotas.maxRoomBytes) {
       closeStream(stream, "room_bandwidth_quota");
+      metrics.quotaStops += 1;
       return fail(RelayFailureReasons.ROOM_BANDWIDTH_QUOTA, { streamId, bytes });
     }
 
@@ -209,6 +234,7 @@ export function createRelaySimulation(options = {}) {
 
     if (nextMonthlyHostBytes > quotas.maxMonthlyHostBytes) {
       closeStream(stream, "monthly_host_quota");
+      metrics.quotaStops += 1;
       return fail(RelayFailureReasons.MONTHLY_HOST_QUOTA, { streamId, bytes });
     }
 
@@ -260,13 +286,22 @@ export function createRelaySimulation(options = {}) {
     };
   }
 
-  function closeHostTunnel({ tunnelId, roomId, reason = "host_closed" }) {
+  function closeHostTunnel({ tunnelId, roomId, hostId, hostToken, reason = "host_closed" }) {
     const tunnel = tunnelId
       ? [...hostTunnels.values()].find((candidate) => candidate.id === tunnelId)
       : hostTunnels.get(roomId);
 
     if (!tunnel) {
       return fail(RelayFailureReasons.HOST_TUNNEL_UNAVAILABLE, { tunnelId, roomId });
+    }
+
+    const authenticatedHostId = hostId ?? tunnel.hostId;
+    if (authenticatedHostId !== tunnel.hostId || !hostTunnelAuthorized({
+      hostId: tunnel.hostId,
+      roomId: tunnel.roomId,
+      hostToken
+    })) {
+      return fail(RelayFailureReasons.HOST_TUNNEL_UNAUTHORIZED, { tunnelId, roomId });
     }
 
     if (tunnel.state === "closed") {
@@ -343,6 +378,7 @@ export function createRelaySimulation(options = {}) {
       ...metrics,
       openHostTunnels: [...hostTunnels.values()].filter((tunnel) => tunnel.state === "open").length,
       openFriendStreams: [...streams.values()].filter((stream) => stream.state === "open").length,
+      roomHours: calculateRoomHours(),
       roomBytes: Object.fromEntries(roomBytes),
       monthlyHostBytes: Object.fromEntries(monthlyHostBytes)
     };
@@ -361,6 +397,7 @@ export function createRelaySimulation(options = {}) {
         inviteId: request.inviteId,
         friendId: request.friendId,
         minecraftUuid: request.minecraftUuid,
+        consume: true,
         now: clock.now()
       });
 
@@ -435,6 +472,20 @@ export function createRelaySimulation(options = {}) {
     return [...streams.values()].filter((stream) => stream.roomId === roomId && stream.state === "open").length;
   }
 
+  function calculateRoomHours() {
+    const openMilliseconds = [...hostTunnels.values()].reduce((total, tunnel) => {
+      const closedAt = tunnel.closedAt ?? clock.now();
+      return total + Math.max(0, closedAt - tunnel.openedAt);
+    }, 0);
+
+    return openMilliseconds / (60 * 60 * 1000);
+  }
+
+  function hostTunnelAuthorized({ hostId, roomId, hostToken }) {
+    const expectedToken = hostCredentials.get(`${roomId}:${hostId}`);
+    return Boolean(expectedToken && hostToken && expectedToken === hostToken);
+  }
+
   function closeStream(stream, reason) {
     if (stream.state === "closed") {
       return;
@@ -456,7 +507,7 @@ export function createRelaySimulation(options = {}) {
 
   function failOpen(reason, request) {
     metrics.failedOpens += 1;
-    recordEvent("friend_stream_open_failed", { reason, ...request });
+    recordEvent("friend_stream_open_failed", safeOpenFailureMetadata(reason, request));
     return fail(reason);
   }
 
@@ -477,6 +528,14 @@ export function createRelaySimulation(options = {}) {
 
 function isThenable(value) {
   return Boolean(value && typeof value.then === "function");
+}
+
+function normalizeHostCredentials(credentials = {}) {
+  if (credentials instanceof Map) {
+    return new Map(credentials);
+  }
+
+  return new Map(Object.entries(credentials));
 }
 
 function isMinecraftLoopbackTarget(target) {
@@ -545,6 +604,8 @@ export function redactRelayDiagnostics(value) {
   if (typeof value === "string") {
     return value
       .replace(/\b(sessionToken|session|relayToken|inviteToken|token)=([^&\s"'<>]+)/gi, "$1=[redacted:relay_secret]")
+      .replace(/\b(access_token|refresh_token|password)=([^&\s"'<>]+)/gi, "$1=[redacted:relay_secret]")
+      .replace(/\b(Bearer|Basic)\s+[^&\s"'<>]+/gi, "$1 [redacted:relay_secret]")
       .replace(/\b[A-Za-z0-9_-]*(session-token|invite-secret|relay-secret)[A-Za-z0-9_-]*\b/gi, "[redacted:relay_secret]");
   }
 
@@ -557,7 +618,7 @@ export function redactRelayDiagnostics(value) {
       Object.entries(value)
         .filter(([, nested]) => nested !== undefined)
         .map(([key, nested]) => {
-          if (/token|credential|secret/i.test(key)) {
+          if (/token|credential|secret|authorization|cookie|password/i.test(key)) {
             return [key, "[redacted:relay_secret]"];
           }
 
@@ -567,6 +628,23 @@ export function redactRelayDiagnostics(value) {
   }
 
   return value;
+}
+
+function safeOpenFailureMetadata(reason, request = {}) {
+  return {
+    reason,
+    roomId: request.roomId,
+    inviteId: request.inviteId,
+    friendId: request.friendId,
+    minecraftUuid: request.minecraftUuid,
+    requestedTarget: request.requestedTarget
+      ? {
+          kind: request.requestedTarget.kind,
+          host: request.requestedTarget.host,
+          port: request.requestedTarget.port
+        }
+      : undefined
+  };
 }
 
 function byteLength(payload) {

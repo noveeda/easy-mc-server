@@ -9,12 +9,13 @@ Relay implementation starts in M4. M2 only reserves the ownership boundary so pr
 The relay contract requires:
 
 1. A `relay.m4` host tunnel registered for the room's local Minecraft target only.
-2. A session validation service result, or local test fixture, with matching room, invite, friend, session token, server-observed Minecraft UUID, and expiry.
-3. No caller-selected arbitrary TCP target.
-4. One-time session consumption so replayed stream opens fail closed.
-5. Enforced room member, session duration, idle timeout, room bandwidth, and monthly host bandwidth quotas.
-6. Host tunnel lifecycle, bounded disconnect retry/failure state, metrics, and redacted relay diagnostics.
+2. A room-bound host tunnel credential before a host tunnel can be opened or closed.
+3. A session validation service result, or local test fixture, with matching room, invite, host, friend, session token, server-observed Minecraft UUID, and expiry.
+4. Authoritative first-use consumption through the session validation boundary; relay-local replay checks are defense in depth only.
+5. No caller-selected arbitrary TCP target.
+6. Enforced room member, session duration, idle timeout, room bandwidth, and monthly host bandwidth quotas.
+7. Host tunnel lifecycle, bounded disconnect retry/failure state, room-hour/quota-stop metrics, and redacted relay diagnostics.
 
-Any missing, expired, replayed, cross-room, wrong-invite, wrong-UUID, arbitrary-target, closed-tunnel, or quota-exceeded request fails closed.
+Any missing, expired, replayed, cross-room, wrong-invite, wrong-host, wrong-UUID, arbitrary-target, closed-tunnel, or quota-exceeded request fails closed. Failed-open logs use an allowlisted diagnostic shape instead of recording raw request metadata.
 
 `relayEcho()` provides a local echo-style contract proving that an approved friend stream reaches the host stream without opening a real socket or starting Minecraft.
