@@ -2,7 +2,13 @@
   "name": "local-minecraft-room",
   "private": true,
   "version": "0.0.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "services/*",
+    "mods/*"
+  ],
   "scripts": {
-    "test": "node scripts/verify-static-prototypes.mjs"
+    "test": "node scripts/verify-static-prototypes.mjs && node --test --test-isolation=none tests/smoke/*.test.mjs packages/protocol/tests/*.test.mjs services/control-plane/tests/*.test.mjs"
   }
 }

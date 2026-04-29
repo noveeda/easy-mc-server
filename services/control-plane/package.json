@@ -1,0 +1,9 @@
+{
+  "name": "@local-room/control-plane",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    "./domain/simulation": "./src/domain/simulation.mjs"
+  }
+}
