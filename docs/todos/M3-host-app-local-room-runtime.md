@@ -41,6 +41,9 @@ Let the host create and run a local Fabric room from the Windows desktop app wit
 - [x] Server bridge state model covers allowlist persistence, denied/blocked messages, outage behavior, and health snapshots.
 - [x] Node local runtime adapter can materialize preview room files and return a dry-run process intent for `npm.cmd run mvp0:preview`.
 - [x] Real launch remains fail-closed when required runtime artifacts, such as the Fabric server jar, are missing.
+- [x] Node Java detection adapter can probe configured path, `JAVA_HOME`, `PATH`, and Program Files candidates for Java 21+ without requiring a real Java install in tests.
+- [x] Node Fabric bootstrap adapter downloads only from the approved Fabric Meta source and installs the server jar only after pinned SHA256 verification.
+- [x] Node local lifecycle manager covers start, stop, restart, duplicate start blocking, child process errors, ready log detection, split log chunks, crash log detection, timeout kill fallback, hard stop timeout failure, and redacted runtime log events with fake process tests.
 
 ## Desktop Runtime TODO
 
@@ -54,16 +57,16 @@ Checked items in this section are executable runtime contracts unless they expli
 - [x] Detect compatible Java runtimes on Windows.
 - [x] Apply the Java compatibility rule for the selected Minecraft version.
 - [x] Prompt Java installation only when no compatible runtime exists.
-- [ ] Download Fabric server artifacts from known sources.
+- [x] Download Fabric server artifacts from known sources in the Node bootstrap adapter.
 - [x] Define checksum-gated Fabric server artifact download intent from known sources.
-- [ ] Verify downloaded Fabric/server artifact checksums before use in the real bootstrap adapter.
+- [x] Verify downloaded Fabric/server artifact checksums before use in the Node bootstrap adapter.
 - [x] Cache verified downloads with immutable version metadata.
 - [x] Generate local room folder structure.
 - [x] Generate local room folder structure in the runnable developer preview under `.local/mvp0-preview`.
 - [x] Persist EULA consent from the GUI before server start.
 - [x] Generate `server.properties` from room-safe defaults.
 - [x] Install the selected fixed pack into the local room folder.
-- [ ] Start, stop, and restart the local Fabric server process.
+- [x] Start, stop, and restart the local Fabric server process through the Node lifecycle adapter contract.
 - [x] Define local process start, stop, and restart intents for the desktop adapter.
 - [x] Stream redacted server logs to the host UI.
 - [x] Detect crash, offline download, checksum failure, missing Java, and incompatible Java states.
@@ -104,6 +107,7 @@ Checked items in this section are executable runtime contracts unless they expli
 - [x] Desktop runtime unit tests for Java detection and version compatibility.
 - [x] Desktop runtime tests for cache layout, checksum failure, and EULA behavior.
 - [x] Server lifecycle test for start/stop/crash handling.
+- [x] Node adapter tests for Java detection, Fabric bootstrap checksum gating, and process lifecycle management.
 - [x] Approval UI tests for pending, approved, denied, blocked, expired, already allowed, and identity changed states.
 - [x] Server bridge unit or gametest coverage for UUID confirmation and allowlist behavior.
 - [ ] Manual Windows run from room creation to local server start.

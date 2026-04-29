@@ -3,7 +3,7 @@ title: "MVP-0 로컬 runnable preview 사용 가이드"
 type: usage
 status: current
 written_at: "2026-04-30 KST"
-source_plan: "../plans/2026-04-30-001-feature-mvp0-runnable-preview-plan.md"
+source_plan: "../plans/2026-04-30-002-feature-m3-real-runtime-bootstrap-plan.md"
 ---
 
 # MVP-0 로컬 runnable preview 사용 가이드
@@ -12,7 +12,7 @@ source_plan: "../plans/2026-04-30-001-feature-mvp0-runnable-preview-plan.md"
 
 이 프리뷰는 MVP-0 완성품이 아니라 runnable developer preview다.
 
-목적은 "호스트가 로컬 방 파일을 준비하고, 서버 실행 의도를 확인하고, 친구 팩 차단 조건을 검증하고, 로컬 릴레이 byte forwarding smoke를 확인한다"는 개발자용 실행 경로를 한 번에 점검하는 것이다. 아직 비개발자 테스터에게 배포할 Windows 앱, import 가능한 `.mrpack`, 배포된 릴레이 서비스, 실제 Minecraft 두 클라이언트 E2E는 아니다.
+목적은 "호스트가 로컬 방 파일을 준비하고, 서버 실행 의도를 확인하고, Java/Fabric bootstrap adapter 상태를 확인하고, 친구 팩 차단 조건을 검증하고, 로컬 릴레이 byte forwarding smoke를 확인한다"는 개발자용 실행 경로를 한 번에 점검하는 것이다. 아직 비개발자 테스터에게 배포할 Windows 앱, import 가능한 `.mrpack`, 배포된 릴레이 서비스, 실제 Minecraft 두 클라이언트 E2E는 아니다.
 
 ## 실행 명령
 
@@ -23,6 +23,18 @@ npm.cmd run mvp0:preview
 ```
 
 기본 실행은 dry-run preview다. 외부 다운로드, Java 실행, Fabric 서버 실행, Minecraft 실행을 요구하지 않는다.
+
+실제 실행 쪽 blocker를 더 자세히 보려면 다음 명령을 실행한다.
+
+```powershell
+npm.cmd run mvp0:preview -- --real-launch
+```
+
+Fabric server jar 다운로드까지 시도하는 옵션도 있지만, 현재 프리뷰 manifest에는 실제 pinned SHA256이 아니라 preview placeholder가 남아 있으므로 다운로드 전에 blocked 되는 것이 정상이다.
+
+```powershell
+npm.cmd run mvp0:preview -- --real-launch --download-fabric
+```
 
 ## 생성 경로
 
@@ -64,14 +76,14 @@ npm.cmd run mvp0:preview -- --real-launch
 blocked는 현재 프리뷰의 예상 가능한 상태이므로 명령 자체는 성공 종료 코드로 끝난다. 자동화에서는 최종 요약의 `Java/Fabric launch path: blocked` 문구를 실제 실행 미완료 신호로 보면 된다.
 
 - Windows 데스크톱 앱 또는 Tauri process adapter가 실제 실행 경로에 연결되어 있어야 한다.
-- Java 21 호환 런타임을 감지해야 한다.
+- Java 21 호환 런타임을 감지해야 한다. 현재 Node adapter는 `configuredPath`, `JAVA_HOME`, `PATH`, Program Files 계열 후보를 검사할 수 있지만, 실제 실행 preview는 보안을 위해 PATH와 네트워크 경로 후보를 제외하고 신뢰된 설치 경로만 사용한다.
 - 지원 Minecraft 버전은 현재 MVP-0 고정값인 `1.21.1`이어야 한다.
-- Fabric Loader와 Fabric server jar가 app-approved source에서 내려받아져야 한다.
-- Fabric server jar checksum이 고정값과 일치해야 한다.
+- Fabric Loader와 Fabric server jar가 app-approved source에서 내려받아져야 한다. 현재 Node adapter는 Fabric Meta server jar URL만 허용한다.
+- Fabric server jar checksum이 고정값과 일치해야 한다. placeholder나 64자리 SHA256이 아닌 값은 다운로드 전에 blocked 된다.
 - EULA 동의가 명시적으로 저장되어야 한다.
 - 고정팩 mod 파일이 검증된 source에서 설치되어야 한다.
 - 서버 bridge mod와 client connection mod의 signed first-party artifact가 준비되어야 한다.
-- 실제 local Fabric server start/stop/restart와 redacted log streaming이 수동 검증되어야 한다.
+- 실제 local Fabric server start/stop/restart와 redacted log streaming이 수동 검증되어야 한다. 현재 Node lifecycle adapter는 fake process 테스트로 start, stop, restart, duplicate start 차단, child process error, ready/crash log, split log chunk, redaction, stop timeout을 검증한다.
 
 이 조건이 하나라도 빠지면 real launch는 실패하거나 blocked 상태로 취급해야 한다.
 
@@ -103,11 +115,12 @@ MVP-0 완료는 runnable preview 성공보다 훨씬 좁고 구체적인 사용�
 - 비개발자 host/friend 테스트에서 서버, 포트포워딩, VPN, 방화벽 설명 없이 흐름이 완료된다.
 - closed-alpha release checklist와 support redaction, noindex, accessibility 확인이 통과한다.
 
-현재 프리뷰는 이 완료 조건을 향해 가는 개발자용 실행 점검이며, MVP-0 제품 완성품이 아니다.
+현재 프리뷰는 이 완료 조건을 향해 가는 개발자용 실행 점검이며, MVP-0 제품 완성품이 아니다. 이번 단계에서 Java 감지, Fabric server jar checksum bootstrap, local process lifecycle adapter는 구현됐지만, 실제 Windows GUI 버튼에서 real Fabric 서버를 시작하는 수동 검증은 아직 남아 있다.
 
 ## 관련 문서
 
 - [MVP-0 Runnable Preview Implementation Plan](../plans/2026-04-30-001-feature-mvp0-runnable-preview-plan.md)
+- [M3 Real Runtime Bootstrap Plan](../plans/2026-04-30-002-feature-m3-real-runtime-bootstrap-plan.md)
 - [프로젝트 상태 및 다음 계획 보고서](../reports/2026-04-30-project-status-and-next-plan-report.md)
 - [M3 Host App Local Room Runtime TODO](../todos/M3-host-app-local-room-runtime.md)
 - [M4 Relay Join End-To-End TODO](../todos/M4-relay-join-end-to-end.md)

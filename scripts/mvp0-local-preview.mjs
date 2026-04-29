@@ -3,6 +3,8 @@ import { createConnection } from "node:net";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { HostRuntimeStates, createHostRuntimePlan } from "../apps/desktop/src/runtime/host-runtime.mjs";
+import { bootstrapFabricServer } from "../apps/desktop/src/runtime/node-fabric-bootstrap.mjs";
+import { NodeJavaDetectionSources, detectWindowsJava } from "../apps/desktop/src/runtime/node-java-detection.mjs";
 import { launchLocalServer, materializeRoom } from "../apps/desktop/src/runtime/node-local-runtime.mjs";
 import { readMrpackTemplate, validateMrpackTemplate } from "../packages/modpack-builder/src/mrpack.mjs";
 import {
@@ -17,7 +19,10 @@ const templatePath = `${workspaceRoot}/packages/modpack-builder/m1/mvp0-performa
 const smokeTimeoutMs = 5000;
 
 if (isDirectExecution()) {
-  runMvp0Preview({ realLaunch: process.argv.includes("--real-launch") }).catch((error) => {
+  runMvp0Preview({
+    realLaunch: process.argv.includes("--real-launch"),
+    downloadFabric: process.argv.includes("--download-fabric")
+  }).catch((error) => {
     console.error("");
     console.error("MVP-0 로컬 preview 실행 중 예상하지 못한 오류가 발생했습니다.");
     console.error(error?.stack ?? error);
@@ -25,22 +30,25 @@ if (isDirectExecution()) {
   });
 }
 
-export async function runMvp0Preview({ realLaunch = false } = {}) {
-  section("0/6 MVP-0 로컬 runnable preview를 시작합니다.");
+export async function runMvp0Preview({ realLaunch = false, downloadFabric = false, detectJava = detectWindowsJava, fetch = globalThis.fetch } = {}) {
+  section("0/7 MVP-0 로컬 runnable preview를 시작합니다.");
   line(`작업 폴더: ${previewRoot}`);
   line(`실행 모드: ${realLaunch ? "실제 Java/Fabric 실행 요청" : "dry-run (기본값)"}`);
+  line(`Fabric 다운로드: ${downloadFabric ? "요청됨" : "생략"}`);
 
   await preparePreviewRoot();
 
   const runtimePlan = await createPreviewRuntimePlan();
   await runMaterialization(runtimePlan);
   const packStatus = await runPackReadinessCheck();
-  const launchStatus = await runLaunchPreview(runtimePlan, { realLaunch });
+  const bootstrapStatus = await runRuntimeBootstrapCheck(runtimePlan, { realLaunch, downloadFabric, detectJava, fetch });
+  const launchStatus = await runLaunchPreview(bootstrapStatus.runtimePlan, { realLaunch });
   const relayStatus = await runRelaySmoke();
 
   section("Preview 결과");
   line("방 파일 materialize: 완료");
   line(`Pack template readiness: ${packStatus.summary}`);
+  line(`Runtime bootstrap: ${bootstrapStatus.summary}`);
   line(`Java/Fabric launch path: ${launchStatus.summary}`);
   line(`로컬 TCP relay smoke: ${relayStatus.summary}`);
   line("이 preview는 외부 다운로드 없이 실행되는 개발자용 경로입니다.");
@@ -48,20 +56,21 @@ export async function runMvp0Preview({ realLaunch = false } = {}) {
   return {
     previewRoot,
     packStatus,
+    bootstrapStatus,
     launchStatus,
     relayStatus
   };
 }
 
 async function preparePreviewRoot() {
-  section("1/6 preview 작업 폴더를 준비합니다.");
+  section("1/7 preview 작업 폴더를 준비합니다.");
   await rm(previewRoot, { recursive: true, force: true });
   await mkdir(`${previewRoot}/cache/downloads`, { recursive: true });
   line(".local/mvp0-preview를 새로 만들었습니다.");
 }
 
 async function createPreviewRuntimePlan() {
-  section("2/6 고정 방 실행 계획을 만듭니다.");
+  section("2/7 고정 방 실행 계획을 만듭니다.");
 
   const mods = [
     {
@@ -146,7 +155,7 @@ async function createPreviewRuntimePlan() {
 }
 
 async function runMaterialization(runtimePlan) {
-  section("3/6 방 파일을 materialize합니다.");
+  section("3/7 방 파일을 materialize합니다.");
   const result = await materializeRoom(runtimePlan);
 
   if (!result.ok) {
@@ -160,7 +169,7 @@ async function runMaterialization(runtimePlan) {
 }
 
 async function runPackReadinessCheck() {
-  section("4/6 pack template readiness를 검사합니다.");
+  section("4/7 pack template readiness를 검사합니다.");
   const template = await readMrpackTemplate(templatePath);
   const readiness = validateMrpackTemplate(template);
 
@@ -188,8 +197,77 @@ async function runPackReadinessCheck() {
   };
 }
 
+async function runRuntimeBootstrapCheck(runtimePlan, { realLaunch = false, downloadFabric = false, detectJava, fetch } = {}) {
+  section("5/7 Java/Fabric bootstrap adapter를 확인합니다.");
+
+  if (!realLaunch && !downloadFabric) {
+    line("dry-run: 실제 Java 감지와 Fabric 다운로드는 실행하지 않습니다.");
+    return {
+      state: "skipped",
+      summary: "skipped (dry-run)",
+      runtimePlan
+    };
+  }
+
+  const javaResult = await detectJava({
+    configuredPath: runtimePlan.java?.path,
+    minimumMajorVersion: runtimePlan.java?.minimumMajorVersion ?? 21,
+    allowPathCandidates: false,
+    allowNetworkPaths: false,
+    trustedSources: [
+      NodeJavaDetectionSources.CONFIGURED_PATH,
+      NodeJavaDetectionSources.JAVA_HOME,
+      NodeJavaDetectionSources.ADOPTIUM,
+      NodeJavaDetectionSources.JAVA
+    ]
+  });
+
+  if (!javaResult.ok) {
+    line(`Java 감지: blocked - ${javaResult.failure.message}`);
+    return {
+      state: "blocked",
+      summary: `blocked (${javaResult.failure.message})`,
+      runtimePlan
+    };
+  }
+
+  line(`Java 감지: Java ${javaResult.java.majorVersion} (${javaResult.java.source})`);
+  const nextRuntimePlan = withDetectedJava(runtimePlan, javaResult.java);
+
+  if (!downloadFabric) {
+    line("Fabric 다운로드: 생략 (--download-fabric 옵션이 있을 때만 다운로드 시도)");
+    return {
+      state: "java-ready",
+      summary: "Java 감지 완료, Fabric 다운로드 생략",
+      runtimePlan: nextRuntimePlan,
+      java: javaResult.java
+    };
+  }
+
+  const fabricResult = await bootstrapFabricServer(nextRuntimePlan, { fetch });
+  if (!fabricResult.ok) {
+    line(`Fabric bootstrap: blocked - ${fabricResult.failure.message}`);
+    return {
+      state: "blocked",
+      summary: `blocked (${fabricResult.failure.message})`,
+      runtimePlan: nextRuntimePlan,
+      java: javaResult.java,
+      fabricFailure: fabricResult.failure
+    };
+  }
+
+  line(`Fabric bootstrap: 검증된 server jar 설치 완료 (${fabricResult.sha256})`);
+  return {
+    state: "ready",
+    summary: "Java 감지 및 Fabric server jar 검증 완료",
+    runtimePlan: nextRuntimePlan,
+    java: javaResult.java,
+    fabric: fabricResult
+  };
+}
+
 async function runLaunchPreview(runtimePlan, { realLaunch = false } = {}) {
-  section("5/6 Java/Fabric 서버 실행 경로를 확인합니다.");
+  section("6/7 Java/Fabric 서버 실행 경로를 확인합니다.");
   const result = await launchLocalServer(runtimePlan, { mode: realLaunch ? "real" : "dry-run" });
 
   if (result.ok && result.launched === false) {
@@ -211,7 +289,8 @@ async function runLaunchPreview(runtimePlan, { realLaunch = false } = {}) {
     line("이 상태는 preview 실패가 아니라 현재 저장소의 외부 artifact blocker입니다.");
     return {
       state: "blocked",
-      summary: "blocked (Fabric server jar 또는 Java runtime 같은 외부 artifact가 없음)"
+      summary: "blocked (Fabric server jar 또는 Java runtime 같은 외부 artifact가 없음)",
+      missing: result.failure.detail.missing ?? []
     };
   }
 
@@ -219,7 +298,7 @@ async function runLaunchPreview(runtimePlan, { realLaunch = false } = {}) {
 }
 
 async function runRelaySmoke() {
-  section("6/6 로컬 TCP relay preview smoke를 실행합니다.");
+  section("7/7 로컬 TCP relay preview smoke를 실행합니다.");
   const hostTarget = await startTcpEchoTarget({ responsePrefix: "host:" });
   const relay = await startLocalTcpRelayPreview({
     sessions: [
@@ -298,6 +377,20 @@ function missingArtifactLabel(missing) {
     java_runtime: "Java 21 runtime"
   };
   return labels[missing] ?? missing;
+}
+
+function withDetectedJava(runtimePlan, java) {
+  const next = structuredCloneJson(runtimePlan);
+  next.java.path = java.path;
+  next.java.majorVersion = java.majorVersion;
+  next.java.source = java.source;
+  next.java.vendor = java.vendor;
+  next.command[0] = java.path;
+  return next;
+}
+
+function structuredCloneJson(value) {
+  return JSON.parse(JSON.stringify(value));
 }
 
 function section(message) {

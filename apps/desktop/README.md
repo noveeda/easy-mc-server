@@ -21,7 +21,7 @@ Default UI should keep using room language and avoid explaining ports, firewall 
 
 ## M3 Host Runtime Contract
 
-`src/runtime/host-runtime.mjs` is the executable M3 contract for later Tauri and Minecraft adapters. `src/runtime/local-runtime-adapter.mjs` turns that validated room plan into concrete file materialization, Fabric download, and local process intents. `src/tunnel/host-tunnel.mjs` adds the M4 host-side room connection intent for the later relay adapter. These modules are dependency-free and do not start Java, Fabric, Minecraft, or network sockets directly.
+`src/runtime/host-runtime.mjs` is the executable M3 contract for later Tauri and Minecraft adapters. `src/runtime/local-runtime-adapter.mjs` turns that validated room plan into concrete file materialization, Fabric download, and local process intents. `src/runtime/node-java-detection.mjs`, `src/runtime/node-fabric-bootstrap.mjs`, and `src/runtime/node-local-runtime.mjs` are the Node-side adapter layer for Java detection, checksum-gated Fabric server installation, local file materialization, and process lifecycle management. `src/tunnel/host-tunnel.mjs` adds the M4 host-side room connection intent for the later relay adapter.
 
 The contract covers:
 
@@ -38,6 +38,7 @@ The contract covers:
 11. Checksum-gated Fabric server download from Fabric Meta metadata.
 12. Tauri process intents for start, stop, and restart.
 13. Host tunnel intent that binds the active room to `127.0.0.1:25565`, closes when the local room stops, and shows room-language connection/quota states.
+14. Node runtime adapters for Java 21 detection, approved Fabric Meta download, pinned SHA256 verification, process start/stop/restart, ready/crash log detection, timeout kill fallback, and redacted log events.
 
 Failures return room-language messages that the desktop UI can show directly. Bridge approval events must use the server-observed Minecraft UUID; a claimed identity from the client can be displayed for context but cannot approve or bypass the room queue.
 

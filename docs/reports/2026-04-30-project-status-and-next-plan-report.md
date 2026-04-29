@@ -19,10 +19,10 @@ source_milestones: "../milestones/2026-04-29-local-minecraft-room-milestones.md"
 - 저장소: `https://github.com/noveeda/easy-mc-server.git`
 - 현재 브랜치: `codex/mvp0-decision-lock`
 - 최신 커밋: `git log -1 --oneline`으로 확인
-- 마지막 검증: `npm.cmd run test` 177개 통과, `npm.cmd run mvp0:preview`, `npm.cmd run mvp0:preview -- --real-launch`, `git diff --check`, `agent-browser` 정적 화면 snapshot 통과
+- 마지막 검증: `npm.cmd run test` 208개 통과, `npm.cmd run mvp0:preview`, `npm.cmd run mvp0:preview -- --real-launch`, `npm.cmd run mvp0:preview -- --real-launch --download-fabric`, `git diff --check`, desktop/invite 정적 화면 browser snapshot 통과
 - 현재 제품 단계: MVP-0를 위한 실행 계약에 더해 로컬 runnable developer preview를 붙이는 단계
 
-현재 M0와 M2는 개발 게이트 기준으로 완료됐다. M3와 M4에는 로컬 파일 생성, dry-run 실행 의도, `.mrpack` blocker 검증, 로컬 TCP relay smoke를 묶는 개발자용 preview 경로가 추가되고 있다. 다만 이것은 MVP-0 완성품이 아니라 runnable developer preview다. 실제 Windows 데스크톱 앱에서 로컬 Fabric 서버를 실행하고 친구가 릴레이로 접속하는 실사용 루프는 아직 완료되지 않았다.
+현재 M0와 M2는 개발 게이트 기준으로 완료됐다. M3와 M4에는 로컬 파일 생성, dry-run 실행 의도, Java 감지 adapter, Fabric server jar checksum bootstrap adapter, local process lifecycle manager, `.mrpack` blocker 검증, 로컬 TCP relay smoke를 묶는 개발자용 preview 경로가 추가되고 있다. 다만 이것은 MVP-0 완성품이 아니라 runnable developer preview다. 실제 Windows 데스크톱 앱에서 로컬 Fabric 서버를 실행하고 친구가 릴레이로 접속하는 실사용 루프는 아직 완료되지 않았다.
 
 사용 가이드:
 
@@ -34,7 +34,7 @@ source_milestones: "../milestones/2026-04-29-local-minecraft-room-milestones.md"
 npm.cmd run mvp0:preview
 ```
 
-기본 실행은 dry-run이며 `.local/mvp0-preview` 아래에 프리뷰 산출물을 만든다. dry-run은 Java, Fabric server jar, Minecraft 서버 process, 실제 친구 접속을 실행하지 않는다.
+기본 실행은 dry-run이며 `.local/mvp0-preview` 아래에 프리뷰 산출물을 만든다. dry-run은 Java, Fabric server jar, Minecraft 서버 process, 실제 친구 접속을 실행하지 않는다. `--real-launch`는 Java 감지와 실제 실행 blocker를 더 자세히 보여주며, `--download-fabric`은 pinned SHA256이 준비된 경우에만 Fabric server jar 다운로드를 시도한다.
 
 ## 3. 제품 방향
 
@@ -122,6 +122,7 @@ npm.cmd run mvp0:preview
 - 앱 데이터 폴더 구조, cache, downloads, room files, logs, support bundles 경로 계획을 만들었다.
 - Fabric Loader 선택 계약을 만들었다.
 - Windows Java 감지 계획을 만들었다.
+- Node Java 감지 adapter를 구현했다.
 - EULA, `server.properties`, fixed pack 설치 계획을 만들었다.
 - local materialization plan을 만들었다.
 - 서버 process start/stop/restart intent를 만들었다.
@@ -130,19 +131,19 @@ npm.cmd run mvp0:preview
 - approval UI 상태 모델을 만들었다.
 - runtime/materialization 경로 traversal 방어를 추가했다.
 - Node 기반 local runtime adapter가 preview room 파일을 실제 파일시스템에 생성하고 dry-run process intent를 반환한다.
+- Node Fabric bootstrap adapter가 Fabric Meta source에서 받은 server jar를 pinned SHA256과 대조한 뒤에만 cache/runtime jar로 설치한다.
+- Node local lifecycle manager가 fake process 테스트로 start, stop, restart, duplicate start 차단, child process error, ready/crash log, split log chunk, redacted log, timeout kill fallback, hard stop timeout failure를 검증한다.
 
 남은 작업:
 
 - 실제 Tauri 데스크톱 앱 shell 구현.
-- Fabric server artifact 다운로드 구현.
-- 다운로드 artifact checksum 검증 구현.
-- Windows에서 Java/Fabric server process start/stop/restart 구현.
+- 실제 Tauri command에서 Java detection/Fabric bootstrap/process lifecycle adapter 연결.
 - 실제 로컬 Fabric 서버 시작 수동 검증.
 
 판단:
 
-- M3는 현재 "실행 계획과 테스트 가능한 계약"을 넘어 로컬 runnable developer preview에서 방 파일 생성까지 확인하는 단계다.
-- 실제 사용자가 앱에서 방을 열 수 있으려면 M3 실구현이 다음 우선순위다.
+- M3는 현재 "실행 계획과 테스트 가능한 계약"을 넘어 Node adapter 수준의 Java 감지, Fabric bootstrap, process lifecycle까지 구현된 단계다.
+- 실제 사용자가 앱에서 방을 열 수 있으려면 Tauri shell wiring과 실제 Windows host-only 서버 시작 검증이 다음 우선순위다.
 
 ### M4. 릴레이 기반 친구 접속 End-To-End
 
@@ -259,7 +260,7 @@ npm.cmd run mvp0:preview
 | Invite helper | `apps/invite-web` 친구 초대 페이지 |
 | Control plane | room/invite/approval/session simulation, HTTP boundary, Fastify wrapper, PostgreSQL 계약 |
 | Relay | relay simulation, quota, replay refusal, open-proxy guard |
-| MVP-0 local preview | `.local/mvp0-preview` 산출물, dry-run process intent, `.mrpack` blocker 검증, local TCP relay smoke |
+| MVP-0 local preview | `.local/mvp0-preview` 산출물, dry-run process intent, Java/Fabric bootstrap blocker 검증, `.mrpack` blocker 검증, local TCP relay smoke |
 | Client mod | Fabric client connection mod skeleton, loopback plan |
 | Server bridge mod | Fabric server bridge skeleton, approval/allowlist 계약 |
 | Safety | invite, support redaction, mod policy, release gate, accessibility 계약 |
@@ -270,9 +271,12 @@ npm.cmd run mvp0:preview
 
 마지막 검증 결과:
 
-- `npm.cmd run test`: 158개 테스트 통과
+- `npm.cmd run test`: 208개 테스트 통과
 - `git diff --check`: 통과
-- 최신 커밋은 원격 브랜치에 push 완료
+- `npm.cmd run mvp0:preview`: 통과
+- `npm.cmd run mvp0:preview -- --real-launch`: Java 21 runtime 및 Fabric server jar blocker를 정상 출력
+- `npm.cmd run mvp0:preview -- --real-launch --download-fabric`: Java 21 runtime blocker를 정상 출력
+- `agent-browser` desktop/invite 정적 화면 snapshot: 주요 버튼과 영역 노출 확인
 
 자동 테스트로 검증된 항목:
 
@@ -283,6 +287,9 @@ npm.cmd run mvp0:preview
 - PostgreSQL repository contract
 - relay authorization, quota, open-proxy guard, replay refusal
 - desktop runtime planning
+- Java detection adapter
+- Fabric bootstrap checksum adapter, timeout, redirect refusal, download size cap, body read failure
+- local process lifecycle manager
 - local path boundary validation
 - client loopback plan
 - host tunnel contract
@@ -293,7 +300,7 @@ npm.cmd run mvp0:preview
 
 아직 수동 검증이 필요한 항목:
 
-- `npm.cmd run mvp0:preview` runnable preview 명령 실행 확인
+- pinned Fabric server jar SHA256으로 실제 `--download-fabric` 성공 경로 확인
 - Windows 데스크톱 앱 실제 실행
 - Java/Fabric 서버 실제 시작
 - Minecraft 클라이언트 실제 접속
@@ -314,11 +321,11 @@ npm.cmd run mvp0:preview
 
 ### 7.2 실제 Desktop Runtime 미완성
 
-현재 M3는 runtime contract와 static GUI prototype에 더해 로컬 preview 파일 생성 adapter를 갖춘 상태다. 그러나 제품 앱에서 실제 Fabric 서버를 실행하는 단계는 아직 아니다.
+현재 M3는 runtime contract와 static GUI prototype에 더해 로컬 preview 파일 생성 adapter, Java detection adapter, Fabric bootstrap adapter, process lifecycle manager를 갖춘 상태다. 그러나 제품 앱에서 실제 Fabric 서버를 실행하는 단계는 아직 아니다.
 
 영향:
 
-- 사용자가 앱에서 실제 Fabric 서버를 시작할 수 없다.
+- 사용자가 앱 GUI 버튼에서 실제 Fabric 서버를 시작할 수 없다.
 - closed alpha를 시작할 수 없다.
 
 ### 7.3 실제 Relay Socket 미완성
@@ -351,11 +358,7 @@ M5의 안전 계약은 준비됐지만 release-complete는 아니다.
 
 - Tauri desktop shell 구성.
 - 현재 `apps/desktop` UI를 실제 앱 shell에 연결.
-- local materialization adapter 구현.
-- Java detection 구현.
-- Fabric artifact download 구현.
-- checksum verification 구현.
-- local Fabric server process start/stop/restart 구현.
+- Java/Fabric/process Node adapter를 Tauri command 또는 sidecar boundary에 연결.
 - redacted log streaming을 UI에 연결.
 - server bridge approval event를 approval panel에 연결.
 
@@ -447,12 +450,10 @@ M6 curated catalog와 M7 direct P2P는 현재 진행하지 않는 것이 좋다.
 
 1. Tauri desktop shell 구성.
 2. 현재 desktop prototype을 실제 앱 shell로 연결.
-3. preview local materialization adapter를 Tauri 파일 쓰기 경로로 연결.
-4. Java detection 구현.
-5. Fabric download/checksum verification 구현.
-6. local Fabric server process start 구현.
-7. host-only manual Windows run 수행.
-8. 이후 `.mrpack` artifact 작업과 M4 real relay socket 작업으로 이동.
+3. preview local materialization adapter와 Java/Fabric/process Node adapter를 Tauri command 경로로 연결.
+4. 실제 Fabric server jar SHA256 lock을 확정하고 `--download-fabric` 경로를 검증.
+5. host-only manual Windows run 수행.
+6. 이후 `.mrpack` artifact 작업과 M4 real relay socket 작업으로 이동.
 
 ## 10. 현재 제품 준비도 평가
 
@@ -461,7 +462,7 @@ M6 curated catalog와 M7 direct P2P는 현재 진행하지 않는 것이 좋다.
 | 제품 방향 | 준비됨 | 로컬 데스크톱 호스트 룸, relay-first MVP-0 |
 | 핵심 계약 | 강함 | M2와 M3-M5 다수 계약이 테스트됨 |
 | 데스크톱 UX | 부분 준비 | 정적 prototype 존재, 실제 Tauri shell 필요 |
-| 로컬 서버 런타임 | 부분 준비 | preview 파일 생성과 dry-run intent 존재, 실제 process 실행 필요 |
+| 로컬 서버 런타임 | 부분 준비 | Node adapter로 Java 감지, Fabric checksum bootstrap, process lifecycle 존재. Tauri wiring과 실제 Windows 수동 실행 필요 |
 | 릴레이 경로 | 부분 준비 | simulation과 local TCP preview 존재, 제품 relay stream 필요 |
 | 친구 설치 경로 | 차단됨 | importable `.mrpack` 전 first-party artifact 필요 |
 | 안전 정책 | 계약 준비됨 | release checklist와 safety gate 존재 |
@@ -471,6 +472,6 @@ M6 curated catalog와 M7 direct P2P는 현재 진행하지 않는 것이 좋다.
 
 현재 프로젝트는 문서 기획 단계는 넘어섰고, MVP-0의 핵심 구조와 안전 계약은 상당 부분 코드와 테스트로 옮겨졌다. 다만 아직 사용자가 실제로 앱을 실행해서 방을 열고 친구가 Minecraft로 접속하는 제품 루프는 완성되지 않았다.
 
-따라서 다음 개발의 핵심은 M3 실제 데스크톱 런타임이다. 이 작업이 끝나야 `.mrpack` 검증, M4 실제 릴레이 접속, M1 비개발자 테스트, M5 closed-alpha release 검증이 순서대로 가능해진다.
+따라서 다음 개발의 핵심은 M3 실제 데스크톱 런타임을 Tauri GUI 경로에 연결하고, 실제 Windows host-only 서버 시작을 검증하는 것이다. 이 작업이 끝나야 `.mrpack` 검증, M4 실제 릴레이 접속, M1 비개발자 테스트, M5 closed-alpha release 검증이 순서대로 가능해진다.
 
 최우선 목표는 기능을 넓히는 것이 아니라, 하나의 고정팩과 하나의 Minecraft 버전으로 host가 방을 열고 friend가 relay로 들어오는 첫 번째 완성 루프를 만드는 것이다.
