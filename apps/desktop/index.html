@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Local Room Desktop Prototype</title>
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="방 메뉴">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">R</span>
+          <div>
+            <strong>Room Builder</strong>
+            <span>Closed alpha</span>
+          </div>
+        </div>
+
+        <nav class="nav-list" aria-label="주요 단계">
+          <a class="nav-item is-active" href="#setup">방 설정</a>
+          <a class="nav-item" href="#pack">모드팩</a>
+          <a class="nav-item" href="#invite">친구 초대</a>
+          <a class="nav-item" href="#approval">승인 대기</a>
+        </nav>
+      </aside>
+
+      <main class="workspace">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">내 PC에서 여는 친구 방</p>
+            <h1>Cozy Performance Room</h1>
+          </div>
+          <div class="room-status" id="room-status" aria-live="polite">
+            준비 전
+          </div>
+        </header>
+
+        <section class="main-grid">
+          <section class="panel setup-panel" id="setup" aria-labelledby="setup-title">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Step 1</p>
+                <h2 id="setup-title">방 준비</h2>
+              </div>
+              <button class="ghost-button" type="button" id="reset-button">처음 상태로</button>
+            </div>
+
+            <div class="field-grid">
+              <label class="field">
+                <span>Minecraft 버전</span>
+                <select id="version-select">
+                  <option value="1.21.1">1.21.1</option>
+                </select>
+              </label>
+
+              <label class="field">
+                <span>추천 구성</span>
+                <select id="pack-select">
+                  <option value="performance">처음 시작용 가벼운 방</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="readiness-list" aria-label="준비 상태">
+              <div class="readiness-row is-ready">
+                <span class="dot" aria-hidden="true"></span>
+                <div>
+                  <strong class="readiness-title">Java 준비됨</strong>
+                  <span class="readiness-text">호환되는 실행 환경을 찾았습니다.</span>
+                </div>
+              </div>
+              <div class="readiness-row is-ready">
+                <span class="dot" aria-hidden="true"></span>
+                <div>
+                  <strong class="readiness-title">방 구성 선택됨</strong>
+                  <span class="readiness-text">처음 시작하기 좋은 고정 구성을 사용합니다.</span>
+                </div>
+              </div>
+              <div class="readiness-row" id="room-files-row">
+                <span class="dot" aria-hidden="true"></span>
+                <div>
+                  <strong class="readiness-title">방 파일 준비 전</strong>
+                  <span class="readiness-text">아래 버튼을 누르면 필요한 파일을 준비합니다.</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="primary-actions">
+              <button class="primary-button" type="button" id="prepare-room-button">방 준비하기</button>
+              <button class="secondary-button" type="button" id="open-room-button" disabled>방 열기</button>
+            </div>
+          </section>
+
+          <section class="panel pack-panel" id="pack" aria-labelledby="pack-title">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Step 2</p>
+                <h2 id="pack-title">적용될 구성</h2>
+              </div>
+              <span class="pill">검증된 고정팩</span>
+            </div>
+
+            <ul class="mod-list" aria-label="선택된 구성 목록">
+              <li>
+                <strong>Fabric API</strong>
+                <span>기본 모드 실행 구성</span>
+              </li>
+              <li>
+                <strong>Lithium</strong>
+                <span>방 성능 개선</span>
+              </li>
+              <li>
+                <strong>FerriteCore</strong>
+                <span>메모리 사용량 완화</span>
+              </li>
+              <li class="is-pending">
+                <strong>친구 연결 모드</strong>
+                <span>알파 배포 파일 준비 필요</span>
+              </li>
+            </ul>
+          </section>
+
+          <section class="panel invite-panel" id="invite" aria-labelledby="invite-title">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Step 3</p>
+                <h2 id="invite-title">친구 초대</h2>
+              </div>
+              <span class="pill is-muted">최대 10명</span>
+            </div>
+
+            <div class="invite-box">
+              <span id="invite-link">방을 열면 초대 링크가 만들어집니다.</span>
+              <button class="secondary-button" type="button" id="copy-invite-button" disabled>복사</button>
+            </div>
+
+            <p class="helper-copy" id="invite-copy">
+              친구는 링크를 열고 안내에 따라 모드팩을 적용한 뒤, 호스트 승인을 기다립니다.
+            </p>
+          </section>
+
+          <section class="panel approval-panel" id="approval" aria-labelledby="approval-title">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Step 4</p>
+                <h2 id="approval-title">접속 요청</h2>
+              </div>
+              <span class="pill is-muted" id="request-count">1명 대기</span>
+            </div>
+
+            <div class="request-row" id="request-row">
+              <div>
+                <strong>MineFriend_27</strong>
+                <span>처음 들어오는 친구입니다.</span>
+              </div>
+              <div class="request-actions">
+                <button class="secondary-button" type="button" id="deny-button">거절</button>
+                <button class="primary-button" type="button" id="approve-button">승인</button>
+              </div>
+            </div>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <script src="./state.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>

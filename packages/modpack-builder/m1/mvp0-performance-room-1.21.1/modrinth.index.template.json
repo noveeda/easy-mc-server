@@ -1,0 +1,73 @@
+{
+  "formatVersion": 1,
+  "game": "minecraft",
+  "versionId": "mvp0-performance-room-1.21.1-alpha.0",
+  "name": "MVP-0 Performance Room 1.21.1",
+  "summary": "Fixed Fabric pack for validating friend install and approval waiting flow.",
+  "files": [
+    {
+      "path": "mods/fabric-api-0.116.11+1.21.1.jar",
+      "hashes": {
+        "sha1": "65f4e8b9dcbad6697b2fb32fa0bb937ec5efcd84",
+        "sha512": "756b8c086f4c911d012f2eb70ca792aef0439503b31bc52026b82830870a94d472de30d61a6a0a9988c02b8462d9c47aa6baa6cd84da1eaf00edb77249b3c413"
+      },
+      "env": {
+        "client": "required",
+        "server": "required"
+      },
+      "downloads": [
+        "https://cdn.modrinth.com/data/P7dR8mSH/versions/IpaMcBLh/fabric-api-0.116.11%2B1.21.1.jar"
+      ],
+      "fileSize": 2426356
+    },
+    {
+      "path": "mods/lithium-fabric-0.15.3+mc1.21.1.jar",
+      "hashes": {
+        "sha1": "c4a1c2b6de9915ac77ae46a005509d4acf09535d",
+        "sha512": "8c576d519121b0c2521101d2209eccd85d560b097fcb847aa54c51cd0d3f3947676f01c8d99913f514487c8e0972a1cf5f3da0c9ef0ec9bacdf2baeb4eb7d1a7"
+      },
+      "env": {
+        "client": "unsupported",
+        "server": "required"
+      },
+      "downloads": [
+        "https://cdn.modrinth.com/data/gvQqBUqZ/versions/XQJtuOTA/lithium-fabric-0.15.3%2Bmc1.21.1.jar"
+      ],
+      "fileSize": 797398
+    },
+    {
+      "path": "mods/ferritecore-7.0.3-fabric.jar",
+      "hashes": {
+        "sha1": "a8a6a34fcda177da2828cedef44e0e538cf78aad",
+        "sha512": "3ad31620fac4ff44327dc7dedbe162b2d978f3f246dc16255a6e400ce9592a0d326fe36a626f3c1bf30a11f813093cbb4dcc107af039cff724d0cdf648541fdf"
+      },
+      "env": {
+        "client": "required",
+        "server": "required"
+      },
+      "downloads": [
+        "https://cdn.modrinth.com/data/uXXizFIs/versions/sOzRw3CG/ferritecore-7.0.3-fabric.jar"
+      ],
+      "fileSize": 123450
+    },
+    {
+      "path": "mods/local-room-client-connection-0.1.0-alpha.jar",
+      "hashes": {
+        "sha1": "REPLACE_WITH_FIRST_PARTY_CLIENT_MOD_SHA1",
+        "sha512": "REPLACE_WITH_FIRST_PARTY_CLIENT_MOD_SHA512"
+      },
+      "env": {
+        "client": "required",
+        "server": "unsupported"
+      },
+      "downloads": [
+        "https://example.invalid/releases/local-room-client-connection-0.1.0-alpha.jar"
+      ],
+      "fileSize": 0
+    }
+  ],
+  "dependencies": {
+    "fabric-loader": "0.19.2",
+    "minecraft": "1.21.1"
+  }
+}

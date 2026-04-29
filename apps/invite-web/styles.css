@@ -1,0 +1,170 @@
+:root {
+  color-scheme: light;
+  --bg: #f4f1eb;
+  --surface: #ffffff;
+  --ink: #17211d;
+  --muted: #66736d;
+  --line: #d9ded8;
+  --accent: #176f55;
+  --accent-dark: #0f4a3c;
+  --danger: #9e2a2b;
+  --focus: #2878c8;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  color: var(--ink);
+  background: var(--bg);
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
+  line-height: 1.5;
+}
+
+a:focus-visible,
+button:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
+.invite-shell {
+  display: grid;
+  min-height: 100vh;
+  padding: 24px;
+  place-items: center;
+}
+
+.invite-panel {
+  width: min(100%, 560px);
+  padding: 28px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+h1,
+p {
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  margin: 0;
+  font-size: 2.5rem;
+  line-height: 1.05;
+  letter-spacing: 0;
+}
+
+.summary,
+.notice {
+  color: var(--muted);
+}
+
+.summary {
+  margin: 18px 0 0;
+  font-size: 1.02rem;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 22px 0;
+}
+
+.facts div {
+  min-width: 0;
+  padding: 14px;
+  background: #f7f8f6;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.facts dt {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.facts dd {
+  margin: 4px 0 0;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.action-link,
+.secondary-action {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 15px;
+  border-radius: 8px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.action-link {
+  color: #ffffff;
+  background: var(--accent);
+  border: 1px solid var(--accent);
+}
+
+.action-link:hover {
+  background: var(--accent-dark);
+}
+
+.secondary-action {
+  color: var(--ink);
+  background: #ffffff;
+  border: 1px solid var(--line);
+}
+
+.notice {
+  margin: 20px 0 0;
+  font-size: 0.92rem;
+}
+
+.is-unavailable h1,
+.is-unavailable .summary {
+  color: var(--danger);
+}
+
+@media (max-width: 520px) {
+  .invite-shell {
+    padding: 12px;
+    place-items: start center;
+  }
+
+  .invite-panel {
+    padding: 20px;
+  }
+
+  h1 {
+    font-size: 2rem;
+  }
+
+  .facts {
+    grid-template-columns: 1fr;
+  }
+}
