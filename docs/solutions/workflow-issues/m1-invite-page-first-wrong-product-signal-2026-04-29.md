@@ -57,6 +57,6 @@ The secondary helper should not include visible QA state pickers or developer co
 
 ## Related
 
-- `docs/plans/2026-04-29-002-desktop-first-m1-pivot-plan.md`
 - `docs/milestones/2026-04-29-local-minecraft-room-milestones.md`
 - `apps/desktop/README.md`
+- `apps/invite-web/README.md`

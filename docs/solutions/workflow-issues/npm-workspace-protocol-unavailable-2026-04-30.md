@@ -46,4 +46,3 @@ The M2 contract suite should run with `npm run test` in a fresh local checkout. 
 
 - `services/control-plane/src/protocol.mjs`
 - `package.json`
-- `docs/plans/2026-04-30-001-m2-contract-foundation-plan.md`

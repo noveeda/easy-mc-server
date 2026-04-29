@@ -60,4 +60,3 @@ The invite link and approval request remain insufficient to mint a session. The 
 
 - `services/control-plane/src/http/handlers.mjs`
 - `services/control-plane/tests/http-boundary.test.mjs`
-- `docs/plans/2026-04-30-002-m2-control-plane-http-boundary-plan.md`

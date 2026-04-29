@@ -59,4 +59,4 @@ node --test --test-isolation=none tests/smoke/*.test.mjs packages/protocol/tests
 ## Related
 
 - `package.json`
-- `docs/plans/2026-04-30-001-m2-contract-foundation-plan.md`
+- `scripts/verify-static-prototypes.mjs`
