@@ -12,6 +12,8 @@ source_milestone: "../milestones/2026-04-29-local-minecraft-room-milestones.md"
 
 **Source units:** U6 Fabric Client Connection Mod, U7 Relay MVP With Guardrails
 
+**Current preview guide:** [MVP-0 local runnable preview](../usage/mvp0-local-preview.md)
+
 ## Goal
 
 Prove that a friend client mod can join the host's local room through loopback proxy and relay-only transport, with no Hamachi, port forwarding, VPN, or rented Minecraft server.
@@ -38,6 +40,7 @@ Prove that a friend client mod can join the host's local room through loopback p
 - [x] Relay host tunnels require a room-bound host credential and cannot be overwritten by another host.
 - [x] Relay friend streams require the approved session host to match the active host tunnel.
 - [x] Client join state model covers missing, expired, revoked invite, approval pending, host unavailable, and connection failure states.
+- [x] Local TCP relay preview can forward bytes from a friend socket to a fixed host target for runnable developer preview smoke coverage.
 
 ## Protocol And Session TODO
 
@@ -56,6 +59,7 @@ Prove that a friend client mod can join the host's local room through loopback p
 - [ ] Accept authenticated room stream connections from client mod.
 - [x] Define authenticated host tunnel and friend stream open contracts.
 - [x] Pair host and friend streams only for valid room/session targets.
+- [x] Prove local TCP byte forwarding in the runnable developer preview harness.
 - [ ] Forward Minecraft TCP bytes without inspecting game payload.
 - [x] Enforce total room size of 10 players including host.
 - [x] Enforce six-hour room session limit.
@@ -88,6 +92,7 @@ Prove that a friend client mod can join the host's local room through loopback p
 ## End-To-End TODO
 
 - [x] Add a local echo-style relay simulation before using Minecraft.
+- [x] Add a local TCP relay preview smoke path before using Minecraft.
 - [x] Add a simulated room-flow E2E test: approved friend stream reaches host stream.
 - [x] Add an E2E test that unauthenticated and arbitrary TCP proxy attempts fail closed.
 - [x] Add an E2E test for quota stop behavior.

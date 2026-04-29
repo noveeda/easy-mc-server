@@ -12,6 +12,8 @@ source_milestone: "../milestones/2026-04-29-local-minecraft-room-milestones.md"
 
 **Source units:** U4 Server Bootstrap And Desktop Host App, U5 Fabric Server Bridge Mod
 
+**Current preview guide:** [MVP-0 local runnable preview](../usage/mvp0-local-preview.md)
+
 ## Goal
 
 Let the host create and run a local Fabric room from the Windows desktop app without learning Java, Fabric Loader, EULA files, logs, firewall, or server process details.
@@ -37,6 +39,8 @@ Let the host create and run a local Fabric room from the Windows desktop app wit
 - [x] Fabric server artifact download contract uses the known Fabric Meta source and fails closed without a pinned server JAR checksum.
 - [x] Local process intent contract covers start, stop, and restart for the later Tauri process adapter.
 - [x] Server bridge state model covers allowlist persistence, denied/blocked messages, outage behavior, and health snapshots.
+- [x] Node local runtime adapter can materialize preview room files and return a dry-run process intent for `npm.cmd run mvp0:preview`.
+- [x] Real launch remains fail-closed when required runtime artifacts, such as the Fabric server jar, are missing.
 
 ## Desktop Runtime TODO
 
@@ -55,6 +59,7 @@ Checked items in this section are executable runtime contracts unless they expli
 - [ ] Verify downloaded Fabric/server artifact checksums before use in the real bootstrap adapter.
 - [x] Cache verified downloads with immutable version metadata.
 - [x] Generate local room folder structure.
+- [x] Generate local room folder structure in the runnable developer preview under `.local/mvp0-preview`.
 - [x] Persist EULA consent from the GUI before server start.
 - [x] Generate `server.properties` from room-safe defaults.
 - [x] Install the selected fixed pack into the local room folder.
@@ -86,6 +91,7 @@ Checked items in this section are executable runtime contracts unless they expli
 ## Completion Gate
 
 - [x] Selected Minecraft version and fixed pack create room files.
+- [x] Runnable developer preview creates local room files and dry-run launch intent.
 - [ ] Local Fabric server starts from the Windows desktop app.
 - [x] Missing Java, offline download failure, checksum failure, and crash states show recoverable UI.
 - [x] EULA consent is required and persisted before start.
@@ -94,6 +100,7 @@ Checked items in this section are executable runtime contracts unless they expli
 
 ## Validation
 
+- [x] Runnable developer preview usage is documented in Korean.
 - [x] Desktop runtime unit tests for Java detection and version compatibility.
 - [x] Desktop runtime tests for cache layout, checksum failure, and EULA behavior.
 - [x] Server lifecycle test for start/stop/crash handling.

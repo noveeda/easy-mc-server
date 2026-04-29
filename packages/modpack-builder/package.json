@@ -1,0 +1,9 @@
+{
+  "name": "@local-room/modpack-builder",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    "./mrpack": "./src/mrpack.mjs"
+  }
+}

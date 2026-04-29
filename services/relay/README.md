@@ -2,6 +2,8 @@
 
 Relay implementation starts in M4. M2 only reserves the ownership boundary so protocol and control-plane contracts can avoid becoming tied to arbitrary TCP forwarding details too early.
 
+For the current Korean runnable developer preview guide, see `../../docs/usage/mvp0-local-preview.md`.
+
 ## M4 Relay Contract
 
 `src/relay-simulation.mjs` is the executable relay contract for later socket or Rust adapters. It models authenticated Minecraft stream forwarding without opening sockets.

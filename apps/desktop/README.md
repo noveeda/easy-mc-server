@@ -2,6 +2,8 @@
 
 This is the desktop-first M3 prototype for the local Minecraft room app. It is intentionally a static Tauri-ready frontend shell, not the final packaged Windows app.
 
+For the current Korean runnable developer preview guide, see `../../docs/usage/mvp0-local-preview.md`.
+
 Open `index.html` directly in a browser to review the host flow. `state.js` contains the prototype state reducer so the flow can be checked without a browser test dependency:
 
 1. Select the fixed supported Minecraft version.
