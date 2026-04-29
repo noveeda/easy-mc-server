@@ -35,28 +35,34 @@ Make room, invite, approval, session, permission, and TTL flows testable and rea
 - [x] Fastify-like router adapter contract preserves the existing HTTP boundary DTOs.
 - [x] Persistence contracts redact raw invite tokens, session credentials, invite URLs, and rate-limit signals.
 - [x] Missing and expired persistence records fail closed.
+- [x] Real Fastify app factory preserves the HTTP DTOs while deriving actors from trusted middleware context.
+- [x] PostgreSQL alpha schema and repository contract cover rooms, invites, approvals, sessions, presence, rate-limit counters, and audit events.
+- [x] PostgreSQL repository tests cover parameterized SQL, token/session hashing, fail-closed reads, transactions, atomic rate-limit upserts, cleanup, and rollback.
+- [x] PostgreSQL migration SQL retrofits existing alpha databases with composite constraints and hashed audit session identifiers.
 
 ## Remaining TODO
 
 ### Fastify Boundary
 
-- [ ] Choose the minimal Fastify package layout under `services/control-plane/`.
+- [x] Choose the minimal Fastify package layout under `services/control-plane/`.
 - [x] Add a dependency-free router adapter that calls the existing HTTP-shaped handlers without changing DTOs.
-- [ ] Add a real Fastify adapter that calls the existing HTTP-shaped handlers without changing DTOs.
-- [ ] Derive host actor identity from trusted request context or middleware, not from request body.
-- [ ] Derive service actor identity for session issuance from trusted middleware.
-- [ ] Add route tests with Fastify `inject` for room creation, invite creation, safe invite lookup, join request, approval queue, approval decision, invite revoke, and session issuance.
+- [x] Add a real Fastify adapter that calls the existing HTTP-shaped handlers without changing DTOs.
+- [x] Derive host actor identity from trusted request context or middleware, not from request body.
+- [x] Derive service actor identity for session issuance from trusted middleware.
+- [x] Add route tests with Fastify `inject` for room creation, invite creation, safe invite lookup, join request, approval queue, approval decision, invite revoke, and session issuance.
 - [ ] Keep the no-dependency handler tests as contract tests beneath the Fastify adapter.
 
 ### PostgreSQL Alpha State
 
-- [ ] Define PostgreSQL tables for rooms, invites, approval requests, sessions, presence, and rate-limit counters.
-- [ ] Store invite tokens as hashes only.
-- [ ] Store session credentials as short-lived, redacted records.
-- [ ] Add TTL columns and indexes for invite expiry, presence expiry, and session expiry.
-- [ ] Add transaction boundaries for approval decision and one-time session issuance.
-- [ ] Add persistence repository tests that prove missing or invalid state fails closed.
-- [ ] Add a migration strategy that can run from an empty alpha database.
+- [x] Define PostgreSQL tables for rooms, invites, approval requests, sessions, presence, and rate-limit counters.
+- [x] Store invite tokens as hashes only.
+- [x] Store session credentials as short-lived, redacted records.
+- [x] Add TTL columns and indexes for invite expiry, presence expiry, and session expiry.
+- [x] Add repository transaction boundaries, session `request_id` uniqueness, and atomic rate-limit upserts.
+- [ ] Add service-level transaction that updates approval decision and issues a one-time session in one operation.
+- [x] Add persistence repository tests that prove missing or invalid state fails closed.
+- [x] Add a migration strategy that can run from an empty alpha database.
+- [x] Add a migration strategy that can harden an already-created alpha database.
 
 ### Rate Limit And Audit Hooks
 
@@ -69,10 +75,10 @@ Make room, invite, approval, session, permission, and TTL flows testable and rea
 
 ### Documentation
 
-- [ ] Document control-plane route ownership and actor derivation rules.
-- [ ] Document the persistence model and TTL behavior.
+- [x] Document control-plane route ownership and actor derivation rules.
+- [x] Document the persistence model and TTL behavior.
 - [ ] Document which errors are safe for friend-facing surfaces.
-- [ ] Update M2 milestone status after Fastify and PostgreSQL slices are complete.
+- [x] Update M2 milestone status after Fastify and PostgreSQL slices are complete.
 
 ## Completion Gate
 
@@ -81,15 +87,15 @@ Make room, invite, approval, session, permission, and TTL flows testable and rea
 - [ ] U3 room-flow test passes: host online -> invite created -> friend join request -> host approves -> short-lived session issued.
 - [ ] Expired/revoked invite tests confirm sensitive room metadata is not exposed.
 - [ ] Missing or invalid state fails closed.
-- [ ] Fastify route tests preserve the same safe DTOs as the no-dependency handler tests.
-- [ ] PostgreSQL-backed alpha state exists for rooms, invites, approvals, sessions, and TTL expiry.
+- [x] Fastify route tests preserve the same safe DTOs as the no-dependency handler tests.
+- [x] PostgreSQL-backed alpha state exists for rooms, invites, approvals, sessions, and TTL expiry.
 
 ## Validation
 
-- [ ] `npm run test`
-- [ ] `git diff --check`
-- [ ] Fastify route tests pass.
-- [ ] PostgreSQL repository/migration tests pass.
+- [x] `npm run test`
+- [x] `git diff --check`
+- [x] Fastify route tests pass.
+- [x] PostgreSQL repository/migration tests pass.
 
 ## Stop Or Pivot
 
