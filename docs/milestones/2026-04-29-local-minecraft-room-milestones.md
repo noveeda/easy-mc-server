@@ -104,7 +104,7 @@ source_plan: "../plans/2026-04-29-001-feature-local-minecraft-room-plan.md"
 
 ## M2. Foundation, Protocol, Control Plane
 
-**Status:** In progress. The no-dependency contract MVP is implemented by [2026-04-30-001-m2-contract-foundation-plan.md](../plans/2026-04-30-001-m2-contract-foundation-plan.md): workspace boundaries, executable protocol permissions, safe invite metadata, and in-memory room/invite/approval/session flow tests exist. Fastify/PostgreSQL-backed alpha state remains pending before full M2 completion.
+**Status:** In progress. The no-dependency contract MVP is implemented by [2026-04-30-001-m2-contract-foundation-plan.md](../plans/2026-04-30-001-m2-contract-foundation-plan.md), and the HTTP-shaped control-plane boundary is implemented by [2026-04-30-002-m2-control-plane-http-boundary-plan.md](../plans/2026-04-30-002-m2-control-plane-http-boundary-plan.md). Workspace boundaries, executable protocol permissions, safe invite metadata, in-memory room/invite/approval/session flow tests, and HTTP request/response redaction tests exist. Fastify/PostgreSQL-backed alpha state remains pending before full M2 completion.
 
 **Goal:** Create the repo foundation and shared contracts that make room, invite, approval, session, permission, and TTL flows testable.
 
