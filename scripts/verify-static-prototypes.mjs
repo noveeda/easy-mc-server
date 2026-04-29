@@ -78,6 +78,10 @@ assert(
   inviteScript.includes("roomFacts.hidden = Boolean(state.unavailable)"),
   "Unavailable invite state must hide room details"
 );
+const inviteDom = createInviteDomSandbox("?state=unknown_state");
+runInNewContext(inviteScript, inviteDom);
+assert(inviteDom.elements.title.textContent === "초대를 열 수 없습니다", "Unknown invite states must fail closed");
+assert(inviteDom.elements.roomFacts.hidden === true, "Unknown invite states must hide room details");
 
 const expectedInviteStates = [
   "ready",
@@ -106,3 +110,52 @@ checkScript("apps/desktop/app.js");
 checkScript("apps/invite-web/app.js");
 
 console.log("static prototype checks passed");
+
+function createInviteDomSandbox(search) {
+  const dd = [{ textContent: "" }, { textContent: "" }];
+  const elements = {
+    panel: { classList: { toggle() {} } },
+    title: { textContent: "" },
+    summary: { textContent: "" },
+    actions: { children: [], replaceChildren(...children) { this.children = children; } },
+    roomFacts: {
+      hidden: false,
+      querySelector() {
+        return dd[0];
+      },
+      querySelectorAll() {
+        return dd;
+      }
+    },
+    trustCopy: { textContent: "" }
+  };
+
+  const selectors = new Map([
+    [".invite-panel", elements.panel],
+    ["#invite-title", elements.title],
+    ["#invite-summary", elements.summary],
+    ["#invite-actions", elements.actions],
+    ["#room-facts", elements.roomFacts],
+    ["#trust-copy", elements.trustCopy]
+  ]);
+
+  return {
+    elements,
+    window: {
+      location: {
+        search
+      }
+    },
+    URLSearchParams,
+    document: {
+      querySelector(selector) {
+        return selectors.get(selector);
+      },
+      createElement() {
+        return {
+          setAttribute() {}
+        };
+      }
+    }
+  };
+}

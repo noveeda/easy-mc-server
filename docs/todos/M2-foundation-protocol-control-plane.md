@@ -1,7 +1,7 @@
 ---
 title: "M2 Foundation Protocol Control Plane TODO"
 type: todo
-status: in_progress
+status: completed
 milestone: M2
 source_milestone: "../milestones/2026-04-29-local-minecraft-room-milestones.md"
 ---
@@ -39,6 +39,10 @@ Make room, invite, approval, session, permission, and TTL flows testable and rea
 - [x] PostgreSQL alpha schema and repository contract cover rooms, invites, approvals, sessions, presence, rate-limit counters, and audit events.
 - [x] PostgreSQL repository tests cover parameterized SQL, token/session hashing, fail-closed reads, transactions, atomic rate-limit upserts, cleanup, and rollback.
 - [x] PostgreSQL migration SQL retrofits existing alpha databases with composite constraints and hashed audit session identifiers.
+- [x] Service-level room service contract wraps room, invite, approval, and first session issuance flows.
+- [x] Approval decision and first session issuance happen in one service-level transaction when the repository supports transactions.
+- [x] Join request rate-limit hooks cover invite, IP/device signal, and Minecraft identity signal.
+- [x] Invite revoke/regeneration, approval decision, and quota hook contracts exist without logging raw tokens or session credentials.
 
 ## Remaining TODO
 
@@ -50,7 +54,7 @@ Make room, invite, approval, session, permission, and TTL flows testable and rea
 - [x] Derive host actor identity from trusted request context or middleware, not from request body.
 - [x] Derive service actor identity for session issuance from trusted middleware.
 - [x] Add route tests with Fastify `inject` for room creation, invite creation, safe invite lookup, join request, approval queue, approval decision, invite revoke, and session issuance.
-- [ ] Keep the no-dependency handler tests as contract tests beneath the Fastify adapter.
+- [x] Keep the no-dependency handler tests as contract tests beneath the Fastify adapter.
 
 ### PostgreSQL Alpha State
 
@@ -59,7 +63,7 @@ Make room, invite, approval, session, permission, and TTL flows testable and rea
 - [x] Store session credentials as short-lived, redacted records.
 - [x] Add TTL columns and indexes for invite expiry, presence expiry, and session expiry.
 - [x] Add repository transaction boundaries, session `request_id` uniqueness, and atomic rate-limit upserts.
-- [ ] Add service-level transaction that updates approval decision and issues a one-time session in one operation.
+- [x] Add service-level transaction that updates approval decision and issues a one-time session in one operation.
 - [x] Add persistence repository tests that prove missing or invalid state fails closed.
 - [x] Add a migration strategy that can run from an empty alpha database.
 - [x] Add a migration strategy that can harden an already-created alpha database.
@@ -67,26 +71,26 @@ Make room, invite, approval, session, permission, and TTL flows testable and rea
 ### Rate Limit And Audit Hooks
 
 - [x] Add dependency-free rate-limit counter contracts with redacted signals.
-- [ ] Add join request rate-limit hook points by invite, IP/device signal, and Minecraft identity signal.
-- [ ] Add invite regeneration/revocation audit events.
-- [ ] Add approval decision audit events without logging tokens or session credentials.
-- [ ] Add room/session quota hook points for M4 relay enforcement.
-- [ ] Add tests that repeated join attempts can be blocked without exposing room metadata.
+- [x] Add join request rate-limit hook points by invite, IP/device signal, and Minecraft identity signal.
+- [x] Add invite regeneration/revocation audit events.
+- [x] Add approval decision audit events without logging tokens or session credentials.
+- [x] Add room/session quota hook points for M4 relay enforcement.
+- [x] Add tests that repeated join attempts can be blocked without exposing room metadata.
 
 ### Documentation
 
 - [x] Document control-plane route ownership and actor derivation rules.
 - [x] Document the persistence model and TTL behavior.
-- [ ] Document which errors are safe for friend-facing surfaces.
+- [x] Document which errors are safe for friend-facing surfaces.
 - [x] Update M2 milestone status after Fastify and PostgreSQL slices are complete.
 
 ## Completion Gate
 
-- [ ] U1 smoke test confirms expected workspace packages and test targets.
-- [ ] U2 schema/permission tests pass for host, friend, and service-admin boundaries.
-- [ ] U3 room-flow test passes: host online -> invite created -> friend join request -> host approves -> short-lived session issued.
-- [ ] Expired/revoked invite tests confirm sensitive room metadata is not exposed.
-- [ ] Missing or invalid state fails closed.
+- [x] U1 smoke test confirms expected workspace packages and test targets.
+- [x] U2 schema/permission tests pass for host, friend, and service-admin boundaries.
+- [x] U3 room-flow test passes: host online -> invite created -> friend join request -> host approves -> short-lived session issued.
+- [x] Expired/revoked invite tests confirm sensitive room metadata is not exposed.
+- [x] Missing or invalid state fails closed.
 - [x] Fastify route tests preserve the same safe DTOs as the no-dependency handler tests.
 - [x] PostgreSQL-backed alpha state exists for rooms, invites, approvals, sessions, and TTL expiry.
 

@@ -1,11 +1,19 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  AbuseControlDefaults,
   AuditEventTypes,
   InviteRecoveryStates,
+  InviteDiscoveryPolicy,
+  RetentionDefaults,
+  UnofficialProductWording,
+  buildAbuseControlAuditEvent,
   buildInviteRecoveryState,
   createAuditEvent,
+  describeSupportBundleContract,
+  getRetentionDefaults,
   redactSupportBundle,
+  validateGeneratedPackPermissionGate,
   validateModPermissionMetadata,
   validatePackPolicy
 } from "../src/index.mjs";
@@ -92,6 +100,16 @@ test("support bundle redacts invite URLs, tokens, IPs, session keys, and credent
   assert.doesNotMatch(redacted.nested.message, /local-room-secret/);
 });
 
+test("support bundle contract explains safe content and redaction", () => {
+  const contract = describeSupportBundleContract();
+
+  assert.ok(contract.include.includes("inviteState"));
+  assert.ok(contract.include.includes("redactedRelayMetrics"));
+  assert.ok(contract.redact.includes("raw invite URLs"));
+  assert.ok(contract.redact.includes("device signals"));
+  assert.match(contract.explanation, /redact tokens, credentials, IPs, device signals, and raw invite URLs/);
+});
+
 test("support bundle redacts compressed and bracketed IPv6 addresses", () => {
   const redacted = redactSupportBundle({
     logs: [
@@ -152,6 +170,37 @@ test("pack policy fails closed when source, license, permission, or hashes are m
   assert.deepEqual(result.failures[0].missing, ["source", "license", "permission", "files[0].hashes"]);
 });
 
+test("generated pack permission gate blocks app rehosting and redistribution rehost permission", () => {
+  const result = validateGeneratedPackPermissionGate({
+    mods: [
+      {
+        id: "rehosted",
+        sourceUrl: "https://modrinth.com/mod/example",
+        license: "MIT",
+        permission: {
+          redistribution: "rehost",
+          use: "allowed_by_license"
+        },
+        files: [
+          {
+            filename: "example.jar",
+            downloads: ["https://cdn.modrinth.com/data/example/example.jar"],
+            rehostedByApp: true,
+            hashes: {
+              sha1: "65f4e8b9dcbad6697b2fb32fa0bb937ec5efcd84",
+              sha512: "756b8c086f4c911d012f2eb70ca792aef0439503b31bc52026b82830870a94d472de30d61a6a0a9988c02b8462d9c47aa6baa6cd84da1eaf00edb77249b3c413"
+            }
+          }
+        ]
+      }
+    ]
+  });
+
+  assert.equal(result.ok, false);
+  assert.ok(result.failures[0].missing.includes("permission"));
+  assert.ok(result.failures[0].missing.includes("files[0].rehosting"));
+});
+
 test("audit events require allowed types, required fields, and no sensitive payloads", () => {
   assert.deepEqual(
     createAuditEvent(
@@ -194,6 +243,56 @@ test("audit events require allowed types, required fields, and no sensitive payl
         metadata: {
           note: "Authorization: Bearer abc.def.ghi from 203.0.113.5 token=raw"
         }
+      }),
+    /sensitive fields/
+  );
+});
+
+test("closed alpha defaults cover discovery, retention, unofficial wording, and abuse controls", () => {
+  assert.deepEqual(InviteDiscoveryPolicy, {
+    robots: "noindex,nofollow",
+    publicDiscovery: false,
+    exposeRoomDetailsForUnavailableStates: false
+  });
+
+  assert.equal(getRetentionDefaults().SESSION_CREDENTIAL_MAX_HOURS, 6);
+  assert.equal(RetentionDefaults.AUDIT_EVENT_DAYS, 90);
+  assert.match(UnofficialProductWording, /not an official Minecraft, Mojang, or Microsoft product/);
+  assert.equal(AbuseControlDefaults.INVITE_REGENERATION_REVOKES_PREVIOUS_INVITE, true);
+});
+
+test("abuse control audit helpers create minimal non-sensitive events", () => {
+  assert.deepEqual(
+    buildAbuseControlAuditEvent(
+      AuditEventTypes.JOIN_RATE_LIMITED,
+      {
+        roomId: "room-1",
+        inviteId: "invite-1",
+        limitKey: "invite_hash",
+        reason: "too_many_join_requests"
+      },
+      { occurredAt: "2026-04-30T00:05:00.000Z" }
+    ),
+    {
+      type: "join_rate_limited",
+      occurredAt: "2026-04-30T00:05:00.000Z",
+      payload: {
+        roomId: "room-1",
+        inviteId: "invite-1",
+        limitKey: "invite_hash",
+        reason: "too_many_join_requests"
+      }
+    }
+  );
+
+  assert.throws(
+    () =>
+      buildAbuseControlAuditEvent(AuditEventTypes.USER_BLOCKED, {
+        roomId: "room-1",
+        actorId: "host-1",
+        minecraftUuid: "uuid-1",
+        reason: "abuse_report",
+        ipAddress: "203.0.113.7"
       }),
     /sensitive fields/
   );

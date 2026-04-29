@@ -17,9 +17,62 @@ export const InviteRecoveryStates = Object.freeze({
 export const AuditEventTypes = Object.freeze({
   ROOM_CREATED: "room_created",
   INVITE_CREATED: "invite_created",
+  INVITE_REVOKED: "invite_revoked",
   APPROVAL_DECISION: "approval_decision",
+  JOIN_RATE_LIMITED: "join_rate_limited",
+  USER_BLOCKED: "user_blocked",
   RELAY_USAGE: "relay_usage"
 });
+
+export const RetentionDefaults = Object.freeze({
+  INVITE_TOKEN_HASH_AFTER_EXPIRY_DAYS: 7,
+  SESSION_CREDENTIAL_MAX_HOURS: 6,
+  IP_DEVICE_RATE_SIGNAL_DAYS: 7,
+  RELAY_RAW_EVENT_DAYS: 30,
+  ROOM_HISTORY_DAYS: 30,
+  AUDIT_EVENT_DAYS: 90
+});
+
+export const AbuseControlDefaults = Object.freeze({
+  APPROVAL_REQUESTS_PER_INVITE_PER_10_MINUTES: 5,
+  APPROVAL_REQUESTS_PER_MINECRAFT_ID_PER_HOUR: 10,
+  APPROVAL_REQUESTS_PER_DEVICE_SIGNAL_PER_HOUR: 12,
+  BLOCKED_FRIEND_REQUIRES_EXPLICIT_HOST_UNBLOCK: true,
+  INVITE_REGENERATION_REVOKES_PREVIOUS_INVITE: true
+});
+
+export const InviteDiscoveryPolicy = Object.freeze({
+  robots: "noindex,nofollow",
+  publicDiscovery: false,
+  exposeRoomDetailsForUnavailableStates: false
+});
+
+export const SupportBundleContract = Object.freeze({
+  include: [
+    "appVersion",
+    "platformFamily",
+    "inviteState",
+    "approvalState",
+    "safeRoomMetadata",
+    "redactedRelayMetrics",
+    "auditEventIds"
+  ],
+  redact: [
+    "raw invite URLs",
+    "invite tokens",
+    "session keys and credentials",
+    "access and refresh tokens",
+    "passwords and cookies",
+    "IP addresses",
+    "device signals",
+    "credential-bearing log fragments"
+  ],
+  explanation:
+    "Support bundles keep enough state to debug invite, approval, pack import, and relay failures, but redact tokens, credentials, IPs, device signals, and raw invite URLs before export."
+});
+
+export const UnofficialProductWording =
+  "This is not an official Minecraft, Mojang, or Microsoft product and is not endorsed by them.";
 
 const REDACTED = "[REDACTED]";
 const REDACTED_IP = "[REDACTED_IP]";
@@ -115,7 +168,10 @@ const inviteRecoveryCopy = Object.freeze({
 const auditRequirements = Object.freeze({
   [AuditEventTypes.ROOM_CREATED]: ["roomId", "actorId"],
   [AuditEventTypes.INVITE_CREATED]: ["roomId", "actorId", "inviteId"],
+  [AuditEventTypes.INVITE_REVOKED]: ["roomId", "actorId", "inviteId", "reason"],
   [AuditEventTypes.APPROVAL_DECISION]: ["roomId", "actorId", "requestId", "decision"],
+  [AuditEventTypes.JOIN_RATE_LIMITED]: ["roomId", "inviteId", "limitKey", "reason"],
+  [AuditEventTypes.USER_BLOCKED]: ["roomId", "actorId", "minecraftUuid", "reason"],
   [AuditEventTypes.RELAY_USAGE]: ["roomId", "sessionId", "byteCount"]
 });
 
@@ -142,6 +198,22 @@ export function buildInviteRecoveryState(state, details = {}) {
 
 export function redactSupportBundle(bundle) {
   return redactValue(bundle);
+}
+
+export function describeSupportBundleContract() {
+  return structuredCloneFallback(SupportBundleContract);
+}
+
+export function getRetentionDefaults() {
+  return structuredCloneFallback(RetentionDefaults);
+}
+
+export function buildAbuseControlAuditEvent(type, payload, options = {}) {
+  if (![AuditEventTypes.JOIN_RATE_LIMITED, AuditEventTypes.USER_BLOCKED, AuditEventTypes.INVITE_REVOKED].includes(type)) {
+    throw new TypeError(`Unsupported abuse control audit event type: ${type}`);
+  }
+
+  return createAuditEvent(type, payload, options);
 }
 
 export function validateModPermissionMetadata(entry) {
@@ -179,6 +251,11 @@ export function validateModPermissionMetadata(entry) {
       reasons.push(`${fileLabel} must keep an original HTTPS download URL`);
     }
 
+    if (isRehostedByApp(file) || isRehostedByApp(entry)) {
+      missing.push(`files[${index}].rehosting`);
+      reasons.push(`${fileLabel} must not be rehosted by the app service`);
+    }
+
     if (!hashes.sha1 || !hashes.sha512) {
       missing.push(`files[${index}].hashes`);
       reasons.push(`${fileLabel} must include pinned SHA1 and SHA512 hashes`);
@@ -204,6 +281,10 @@ export function validatePackPolicy(pack) {
     checkedCount: entries.length,
     failures
   };
+}
+
+export function validateGeneratedPackPermissionGate(pack) {
+  return validatePackPolicy(pack);
 }
 
 export function createAuditEvent(type, payload, options = {}) {
@@ -313,7 +394,17 @@ function hasPermissionRecord(permission) {
     return permission.trim().length > 0;
   }
 
-  return Boolean(permission.redistribution && permission.use);
+  return Boolean(permission.redistribution && permission.use && permission.redistribution !== "rehost");
+}
+
+function isRehostedByApp(value) {
+  return Boolean(
+    value?.rehostedByApp ||
+      value?.hostedByApp ||
+      value?.hostedBy === "app_service" ||
+      value?.distribution === "app_rehost" ||
+      value?.downloadHost === "app_service"
+  );
 }
 
 function packEntries(pack) {

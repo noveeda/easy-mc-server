@@ -30,10 +30,31 @@ Support bundles must redact:
 
 Support bundles may include safe room metadata, package version, operating system family, invite state, approval state, redacted relay metrics, and audit event ids.
 
+The support bundle explanation shown to operators and testers must say that bundles keep enough state to debug invite, approval, pack import, and relay failures, but redact tokens, credentials, IPs, device signals, and raw invite URLs before export.
+
+## Support Bundle Sources
+
+| Source | Allowed contents | Must not contain |
+|---|---|---|
+| Desktop app | App version, OS family, selected Minecraft version, pack profile name, invite state, approval state, non-secret error codes | Microsoft/Minecraft credentials, raw invite tokens, raw session credentials, full local filesystem dumps |
+| Invite helper | Invite recovery state, safe room metadata for valid invites, browser family, action selected, redacted support id | Raw invite URL, room details for expired/revoked/missing/invalid states, referrer data |
+| Relay | Room id, session id surrogate, byte counts, timestamps, close reason, cap reason | IP addresses, raw session keys, access tokens, packet payloads |
+| Control plane | Audit event ids, invite id, room id, approval request id, decision state, rate-limit reason | Raw invite token, credential material, IP/device signal plaintext, secret-bearing logs |
+
+## Retention Defaults
+
+- Invite token hashes: delete 7 days after invite expiry or revocation.
+- Session credentials: delete at expiry; closed-alpha maximum is 6 hours.
+- IP/device rate signals: delete after 7 days unless attached to an active abuse investigation.
+- Relay raw events: aggregate after 30 days and delete raw event detail after 30 days.
+- Room history and Minecraft UUID approval records: delete after 30 days.
+- Audit events: keep 90 days for closed-alpha operator review.
+
 ## Closed Alpha Defaults
 
 - There is no public room discovery.
-- Invite pages stay `noindex,nofollow`.
+- Invite pages stay `noindex,nofollow`; deployments should also send `X-Robots-Tag: noindex, nofollow`.
 - Unavailable invite states hide room details.
 - The product must state that it is not an official Minecraft, Mojang, or Microsoft product and is not endorsed by them.
 - Raw third-party mod files are not rehosted by the app service.
+- Abuse controls must cover repeated join requests, invite regeneration/revocation, host block decisions, and minimal audit events without raw tokens, IPs, device signals, or credentials.

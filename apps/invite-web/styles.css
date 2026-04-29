@@ -1,12 +1,13 @@
 :root {
   color-scheme: light;
-  --bg: #f4f1eb;
+  --bg: #eef3f7;
   --surface: #ffffff;
-  --ink: #17211d;
-  --muted: #66736d;
-  --line: #d9ded8;
+  --ink: #17202a;
+  --muted: #5f6c78;
+  --line: #d5dde5;
   --accent: #176f55;
   --accent-dark: #0f4a3c;
+  --soft: #f6f8fa;
   --danger: #9e2a2b;
   --focus: #2878c8;
 }
@@ -88,7 +89,7 @@ h1 {
 .facts div {
   min-width: 0;
   padding: 14px;
-  background: #f7f8f6;
+  background: var(--soft);
   border: 1px solid var(--line);
   border-radius: 8px;
 }
@@ -104,6 +105,28 @@ h1 {
   margin: 4px 0 0;
   font-weight: 800;
   overflow-wrap: anywhere;
+}
+
+.trust-panel {
+  margin: 0 0 22px;
+  padding: 14px;
+  background: #f8faf7;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--accent);
+  border-radius: 8px;
+}
+
+.trust-panel h2 {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.25;
+  letter-spacing: 0;
+}
+
+.trust-panel p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 0.94rem;
 }
 
 .actions {
@@ -166,5 +189,10 @@ h1 {
 
   .facts {
     grid-template-columns: 1fr;
+  }
+
+  .action-link,
+  .secondary-action {
+    width: 100%;
   }
 }

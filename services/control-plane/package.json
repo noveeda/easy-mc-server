@@ -13,7 +13,8 @@
     "./persistence/memory-store": "./src/persistence/memory-store.mjs",
     "./persistence/postgres": "./src/persistence/postgres/repository.mjs",
     "./persistence/postgres/migrations/0001-alpha-state-constraints": "./src/persistence/postgres/migrations/0001-alpha-state-constraints.sql",
-    "./persistence/postgres/schema": "./src/persistence/postgres/schema.sql"
+    "./persistence/postgres/schema": "./src/persistence/postgres/schema.sql",
+    "./services/room-service": "./src/services/room-service.mjs"
   },
   "dependencies": {
     "fastify": "^5.8.5",

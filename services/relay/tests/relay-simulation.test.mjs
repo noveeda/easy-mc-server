@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import {
   RelayFailureReasons,
   createRelayClock,
-  createRelaySimulation
+  createRelaySimulation,
+  redactRelayDiagnostics
 } from "../src/relay-simulation.mjs";
 
 const HOST_TARGET = Object.freeze({
@@ -17,6 +18,7 @@ function createApprovedSession(overrides = {}) {
     sessionId: "session-a",
     sessionToken: "session-token-a",
     roomId: "room-a",
+    inviteId: "invite-a",
     hostId: "host-a",
     friendId: "friend-a",
     minecraftUuid: "uuid-a",
@@ -57,6 +59,7 @@ test("approved relay session pairs friend stream with host room target", () => {
 
   const stream = relay.openFriendStream({
     roomId: "room-a",
+    inviteId: "invite-a",
     friendId: "friend-a",
     minecraftUuid: "uuid-a",
     sessionId: "session-a",
@@ -67,14 +70,20 @@ test("approved relay session pairs friend stream with host room target", () => {
     ok: true,
     stream: {
       id: stream.stream.id,
+      protocolVersion: "relay.m4",
+      kind: "friend_stream",
       roomId: "room-a",
+      inviteId: "invite-a",
+      tunnelId: stream.stream.tunnelId,
       hostId: "host-a",
       friendId: "friend-a",
       minecraftUuid: "uuid-a",
-      target: HOST_TARGET
+      target: HOST_TARGET,
+      state: "open"
     }
   });
   assert.match(stream.stream.id, /^relay_stream_/);
+  assert.match(stream.stream.tunnelId, /^relay_tunnel_/);
 });
 
 test("relay authorization fails closed for missing, expired, cross-room, wrong-friend, and wrong-UUID sessions", () => {
@@ -90,6 +99,7 @@ test("relay authorization fails closed for missing, expired, cross-room, wrong-f
   assert.deepEqual(
     relay.openFriendStream({
       roomId: "room-a",
+      inviteId: "invite-a",
       friendId: "friend-a",
       minecraftUuid: "uuid-a"
     }),
@@ -112,6 +122,7 @@ test("relay authorization fails closed for missing, expired, cross-room, wrong-f
   assert.deepEqual(
     relay.openFriendStream({
       roomId: "room-b",
+      inviteId: "invite-a",
       friendId: "friend-a",
       minecraftUuid: "uuid-a",
       sessionId: "session-a",
@@ -123,6 +134,7 @@ test("relay authorization fails closed for missing, expired, cross-room, wrong-f
   assert.deepEqual(
     relay.openFriendStream({
       roomId: "room-a",
+      inviteId: "invite-a",
       friendId: "friend-b",
       minecraftUuid: "uuid-a",
       sessionId: "session-a",
@@ -134,6 +146,7 @@ test("relay authorization fails closed for missing, expired, cross-room, wrong-f
   assert.deepEqual(
     relay.openFriendStream({
       roomId: "room-a",
+      inviteId: "invite-a",
       friendId: "friend-a",
       minecraftUuid: "uuid-b",
       sessionId: "session-a",
@@ -143,6 +156,103 @@ test("relay authorization fails closed for missing, expired, cross-room, wrong-f
   );
 });
 
+test("relay validates sessions through the service boundary and refuses replay or invite rebinding", () => {
+  const calls = [];
+  const relay = createRelaySimulation({
+    clock: createRelayClock(0),
+    sessionService: {
+      validateSession(request) {
+        calls.push(request);
+        return {
+          ok: true,
+          session: createApprovedSession()
+        };
+      }
+    }
+  });
+  assert.equal(relay.openHostTunnel({ hostId: "host-a", roomId: "room-a", target: HOST_TARGET }).ok, true);
+
+  const first = relay.openFriendStream({
+    roomId: "room-a",
+    inviteId: "invite-a",
+    friendId: "friend-a",
+    minecraftUuid: "uuid-a",
+    sessionId: "session-a",
+    sessionToken: "session-token-a"
+  });
+  assert.equal(first.ok, true);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(
+    {
+      sessionId: calls[0].sessionId,
+      roomId: calls[0].roomId,
+      inviteId: calls[0].inviteId,
+      friendId: calls[0].friendId,
+      minecraftUuid: calls[0].minecraftUuid
+    },
+    {
+      sessionId: "session-a",
+      roomId: "room-a",
+      inviteId: "invite-a",
+      friendId: "friend-a",
+      minecraftUuid: "uuid-a"
+    }
+  );
+
+  assert.deepEqual(
+    relay.openFriendStream({
+      roomId: "room-a",
+      inviteId: "invite-a",
+      friendId: "friend-a",
+      minecraftUuid: "uuid-a",
+      sessionId: "session-a",
+      sessionToken: "session-token-a"
+    }),
+    { ok: false, reason: RelayFailureReasons.SESSION_REPLAYED }
+  );
+
+  const reboundRelay = createOpenRelay().relay;
+  reboundRelay.authorizeSession(createApprovedSession());
+  assert.deepEqual(
+    reboundRelay.openFriendStream({
+      roomId: "room-a",
+      inviteId: "invite-b",
+      friendId: "friend-a",
+      minecraftUuid: "uuid-a",
+      sessionId: "session-a",
+      sessionToken: "session-token-a"
+    }),
+    { ok: false, reason: RelayFailureReasons.WRONG_INVITE }
+  );
+});
+
+test("relay accepts asynchronous session validation service calls", async () => {
+  const relay = createRelaySimulation({
+    clock: createRelayClock(0),
+    sessionService: {
+      async validateSession() {
+        return {
+          ok: true,
+          session: createApprovedSession()
+        };
+      }
+    }
+  });
+  assert.equal(relay.openHostTunnel({ hostId: "host-a", roomId: "room-a", target: HOST_TARGET }).ok, true);
+
+  const stream = await relay.openFriendStream({
+    roomId: "room-a",
+    inviteId: "invite-a",
+    friendId: "friend-a",
+    minecraftUuid: "uuid-a",
+    sessionId: "session-a",
+    sessionToken: "session-token-a"
+  });
+
+  assert.equal(stream.ok, true);
+  assert.equal(stream.stream.roomId, "room-a");
+});
+
 test("open-proxy guard rejects arbitrary TCP targets", () => {
   const { relay } = createOpenRelay();
   relay.authorizeSession(createApprovedSession());
@@ -150,6 +260,7 @@ test("open-proxy guard rejects arbitrary TCP targets", () => {
   assert.deepEqual(
     relay.openFriendStream({
       roomId: "room-a",
+      inviteId: "invite-a",
       friendId: "friend-a",
       minecraftUuid: "uuid-a",
       sessionId: "session-a",
@@ -164,18 +275,128 @@ test("open-proxy guard rejects arbitrary TCP targets", () => {
   );
 });
 
+test("host tunnel lifecycle closes active streams and blocks later joins", () => {
+  const { relay, tunnel } = createOpenRelay();
+  relay.authorizeSession(createApprovedSession());
+  const stream = relay.openFriendStream({
+    roomId: "room-a",
+    inviteId: "invite-a",
+    friendId: "friend-a",
+    minecraftUuid: "uuid-a",
+    sessionId: "session-a",
+    sessionToken: "session-token-a"
+  });
+
+  const closed = relay.closeHostTunnel({ tunnelId: tunnel.tunnel.id, reason: "host_shutdown" });
+  assert.equal(closed.ok, true);
+  assert.equal(closed.closedStreams, 1);
+  assert.equal(closed.tunnel.state, "closed");
+  assert.deepEqual(relay.recordTransfer({ streamId: stream.stream.id, bytes: 1 }), {
+    ok: false,
+    reason: RelayFailureReasons.UNAUTHENTICATED
+  });
+
+  relay.authorizeSession(createApprovedSession({
+    sessionId: "session-b",
+    sessionToken: "session-token-b",
+    inviteId: "invite-b"
+  }));
+  assert.deepEqual(
+    relay.openFriendStream({
+      roomId: "room-a",
+      inviteId: "invite-b",
+      friendId: "friend-a",
+      minecraftUuid: "uuid-a",
+      sessionId: "session-b",
+      sessionToken: "session-token-b"
+    }),
+    { ok: false, reason: RelayFailureReasons.HOST_TUNNEL_CLOSED }
+  );
+});
+
+test("local echo-style relay simulation delivers approved friend payloads to the host stream", () => {
+  const { relay } = createOpenRelay();
+  relay.authorizeSession(createApprovedSession());
+  const stream = relay.openFriendStream({
+    roomId: "room-a",
+    inviteId: "invite-a",
+    friendId: "friend-a",
+    minecraftUuid: "uuid-a",
+    sessionId: "session-a",
+    sessionToken: "session-token-a"
+  });
+
+  const echo = relay.relayEcho({ streamId: stream.stream.id, payload: "hello host" });
+
+  assert.equal(echo.ok, true);
+  assert.deepEqual(echo.hostFrame, {
+    protocolVersion: "relay.m4",
+    streamId: stream.stream.id,
+    roomId: "room-a",
+    direction: "friend_to_host",
+    payload: "hello host"
+  });
+  assert.equal(echo.friendFrame.direction, "host_to_friend");
+  assert.equal(relay.readMetrics().bytesRelayed, 10);
+});
+
+test("relay metrics and disconnect retry state are bounded", () => {
+  const { relay } = createOpenRelay();
+  relay.authorizeSession(createApprovedSession());
+  const stream = relay.openFriendStream({
+    roomId: "room-a",
+    inviteId: "invite-a",
+    friendId: "friend-a",
+    minecraftUuid: "uuid-a",
+    sessionId: "session-a",
+    sessionToken: "session-token-a"
+  });
+
+  assert.deepEqual(relay.disconnectStream({ streamId: stream.stream.id, maxAttempts: 2, failAttempts: 2 }), {
+    ok: false,
+    reason: RelayFailureReasons.DISCONNECT_RETRY_EXHAUSTED,
+    state: "disconnect_failed",
+    attempts: [
+      { attempt: 1, state: "retrying" },
+      { attempt: 2, state: "retrying" }
+    ]
+  });
+
+  const metrics = relay.readMetrics();
+  assert.equal(metrics.hostTunnelsOpened, 1);
+  assert.equal(metrics.friendStreamsOpened, 1);
+  assert.equal(metrics.disconnectRetries, 2);
+  assert.equal(metrics.disconnectFailures, 1);
+});
+
+test("relay diagnostic redaction removes secrets from errors and logs", () => {
+  const redacted = redactRelayDiagnostics({
+    sessionToken: "session-token-a",
+    inviteToken: "invite-secret-a",
+    message: "session=session-token-a relayToken=relay-secret-a"
+  });
+
+  assert.deepEqual(redacted, {
+    sessionToken: "[redacted:relay_secret]",
+    inviteToken: "[redacted:relay_secret]",
+    message: "session=[redacted:relay_secret] relayToken=[redacted:relay_secret]"
+  });
+});
+
 test("room size quota is enforced", () => {
   const { relay } = createOpenRelay({ quotas: { maxRoomMembers: 1 } });
   relay.authorizeSession(createApprovedSession());
   relay.authorizeSession(createApprovedSession({
     sessionId: "session-b",
     sessionToken: "session-token-b",
+    inviteId: "invite-b",
     friendId: "friend-b",
     minecraftUuid: "uuid-b"
   }));
 
   const first = relay.openFriendStream({
     roomId: "room-a",
+    inviteId: "invite-a",
     friendId: "friend-a",
     minecraftUuid: "uuid-a",
     sessionId: "session-a",
@@ -186,6 +407,7 @@ test("room size quota is enforced", () => {
   assert.deepEqual(
     relay.openFriendStream({
       roomId: "room-a",
+      inviteId: "invite-b",
       friendId: "friend-b",
       minecraftUuid: "uuid-b",
       sessionId: "session-b",
@@ -210,6 +432,7 @@ test("default room size allows 9 friends for 10 total players including host", (
     relay.authorizeSession(createApprovedSession({
       sessionId: `session-${index}`,
       sessionToken: `session-token-${index}`,
+      inviteId: `invite-${index}`,
       friendId: `friend-${index}`,
       minecraftUuid: `uuid-${index}`
     }));
@@ -218,6 +441,7 @@ test("default room size allows 9 friends for 10 total players including host", (
   for (let index = 1; index <= 9; index += 1) {
     const result = relay.openFriendStream({
       roomId: "room-a",
+      inviteId: `invite-${index}`,
       friendId: `friend-${index}`,
       minecraftUuid: `uuid-${index}`,
       sessionId: `session-${index}`,
@@ -229,6 +453,7 @@ test("default room size allows 9 friends for 10 total players including host", (
   assert.deepEqual(
     relay.openFriendStream({
       roomId: "room-a",
+      inviteId: "invite-10",
       friendId: "friend-10",
       minecraftUuid: "uuid-10",
       sessionId: "session-10",
@@ -249,6 +474,7 @@ test("duration, idle, room bandwidth, and monthly host quotas are enforced", () 
   assert.deepEqual(
     durationRelay.openFriendStream({
       roomId: "room-a",
+      inviteId: "invite-a",
       friendId: "friend-a",
       minecraftUuid: "uuid-a",
       sessionId: "session-a",
@@ -265,6 +491,7 @@ test("duration, idle, room bandwidth, and monthly host quotas are enforced", () 
   idleRelay.authorizeSession(createApprovedSession());
   const idleStream = idleRelay.openFriendStream({
     roomId: "room-a",
+    inviteId: "invite-a",
     friendId: "friend-a",
     minecraftUuid: "uuid-a",
     sessionId: "session-a",
@@ -280,6 +507,7 @@ test("duration, idle, room bandwidth, and monthly host quotas are enforced", () 
   roomRelay.authorizeSession(createApprovedSession());
   const roomStream = roomRelay.openFriendStream({
     roomId: "room-a",
+    inviteId: "invite-a",
     friendId: "friend-a",
     minecraftUuid: "uuid-a",
     sessionId: "session-a",
@@ -294,6 +522,7 @@ test("duration, idle, room bandwidth, and monthly host quotas are enforced", () 
   hostRelay.authorizeSession(createApprovedSession());
   const hostStream = hostRelay.openFriendStream({
     roomId: "room-a",
+    inviteId: "invite-a",
     friendId: "friend-a",
     minecraftUuid: "uuid-a",
     sessionId: "session-a",
@@ -310,6 +539,7 @@ test("relay quota accounting rejects negative, zero, and non-finite byte counts"
   relay.authorizeSession(createApprovedSession());
   const stream = relay.openFriendStream({
     roomId: "room-a",
+    inviteId: "invite-a",
     friendId: "friend-a",
     minecraftUuid: "uuid-a",
     sessionId: "session-a",
@@ -340,6 +570,7 @@ test("room bandwidth warning fires before the hard cap", () => {
   relay.authorizeSession(createApprovedSession());
   const stream = relay.openFriendStream({
     roomId: "room-a",
+    inviteId: "invite-a",
     friendId: "friend-a",
     minecraftUuid: "uuid-a",
     sessionId: "session-a",

@@ -20,6 +20,7 @@
         <nav class="nav-list" aria-label="주요 단계">
           <a class="nav-item is-active" href="#setup">방 설정</a>
           <a class="nav-item" href="#pack">모드팩</a>
+          <a class="nav-item" href="#runtime">실행 준비</a>
           <a class="nav-item" href="#invite">친구 초대</a>
           <a class="nav-item" href="#approval">승인 대기</a>
         </nav>
@@ -121,10 +122,27 @@
             </ul>
           </section>
 
-          <section class="panel invite-panel" id="invite" aria-labelledby="invite-title">
+          <section class="panel runtime-panel" id="runtime" aria-labelledby="runtime-title">
             <div class="section-heading">
               <div>
                 <p class="eyebrow">Step 3</p>
+                <h2 id="runtime-title">실행 준비</h2>
+              </div>
+              <span class="pill">시뮬레이션</span>
+            </div>
+
+            <ul class="runtime-list" id="runtime-rows" aria-label="방 실행 준비 계획"></ul>
+
+            <details class="diagnostics">
+              <summary>고급 진단</summary>
+              <ul class="diagnostics-list" id="diagnostics-rows" aria-label="고급 진단 정보"></ul>
+            </details>
+          </section>
+
+          <section class="panel invite-panel" id="invite" aria-labelledby="invite-title">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Step 4</p>
                 <h2 id="invite-title">친구 초대</h2>
               </div>
               <span class="pill is-muted">최대 10명</span>
@@ -143,7 +161,7 @@
           <section class="panel approval-panel" id="approval" aria-labelledby="approval-title">
             <div class="section-heading">
               <div>
-                <p class="eyebrow">Step 4</p>
+                <p class="eyebrow">Step 5</p>
                 <h2 id="approval-title">접속 요청</h2>
               </div>
               <span class="pill is-muted" id="request-count">1명 대기</span>
@@ -152,7 +170,7 @@
             <div class="request-row" id="request-row">
               <div>
                 <strong>MineFriend_27</strong>
-                <span>처음 들어오는 친구입니다.</span>
+                <span>게임에서 확인된 친구입니다. 호스트 승인이 필요합니다.</span>
               </div>
               <div class="request-actions">
                 <button class="secondary-button" type="button" id="deny-button">거절</button>

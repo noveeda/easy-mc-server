@@ -4,12 +4,14 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex,nofollow">
+    <meta name="googlebot" content="noindex,nofollow,noarchive,nosnippet">
+    <meta name="referrer" content="no-referrer">
     <title>친구 방 초대</title>
     <link rel="stylesheet" href="./styles.css">
   </head>
   <body>
     <main class="invite-shell">
-      <section class="invite-panel" aria-labelledby="invite-title">
+      <section class="invite-panel" aria-labelledby="invite-title" aria-describedby="invite-summary">
         <p class="eyebrow">친구 방 초대</p>
         <h1 id="invite-title">Cozy Performance Room</h1>
         <p class="summary" id="invite-summary">
@@ -27,10 +29,15 @@
           </div>
         </dl>
 
-        <div class="actions" id="invite-actions"></div>
+        <section class="trust-panel" aria-labelledby="trust-title">
+          <h2 id="trust-title">안전 확인</h2>
+          <p id="trust-copy">생성된 팩은 원본 모드 다운로드 URL과 고정 해시를 사용합니다. 이 초대 페이지에는 공개 방 목록이나 검색 경로가 없습니다.</p>
+        </section>
+
+        <div class="actions" id="invite-actions" aria-live="polite"></div>
 
         <p class="notice">
-          Microsoft 또는 Minecraft 비밀번호를 요구하지 않습니다. 이 앱은 Minecraft, Mojang, Microsoft의 공식 제품이 아니며 보증 또는 승인을 받지 않았습니다.
+          Microsoft 또는 Minecraft 비밀번호를 요구하지 않습니다. 이 앱은 Minecraft, Mojang, Microsoft의 공식 제품이 아니며 이들로부터 보증 또는 승인을 받지 않았습니다.
         </p>
       </section>
     </main>

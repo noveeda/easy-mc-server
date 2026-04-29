@@ -324,7 +324,9 @@ button:disabled {
   opacity: 0.45;
 }
 
-.mod-list {
+.mod-list,
+.runtime-list,
+.diagnostics-list {
   display: grid;
   gap: 10px;
   margin: 0;
@@ -332,28 +334,54 @@ button:disabled {
   list-style: none;
 }
 
-.mod-list li {
+.mod-list li,
+.runtime-list li,
+.diagnostics-list li {
   min-width: 0;
   padding: 13px 0;
   border-bottom: 1px solid var(--line);
 }
 
-.mod-list li:last-child {
+.mod-list li:last-child,
+.runtime-list li:last-child,
+.diagnostics-list li:last-child {
   border-bottom: 0;
 }
 
 .mod-list strong,
-.mod-list span {
+.mod-list span,
+.runtime-list strong,
+.runtime-list span,
+.diagnostics-list strong,
+.diagnostics-list span {
   display: block;
   overflow-wrap: anywhere;
 }
 
-.mod-list span {
+.mod-list span,
+.runtime-list span,
+.diagnostics-list span {
   color: var(--muted);
 }
 
 .mod-list .is-pending strong {
   color: var(--warning);
+}
+
+.diagnostics {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.diagnostics summary {
+  cursor: pointer;
+  color: var(--blue);
+  font-weight: 800;
+}
+
+.diagnostics-list {
+  margin-top: 12px;
 }
 
 .invite-box {
@@ -392,7 +420,7 @@ button:disabled {
   }
 
   .nav-list {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 
   .main-grid,
@@ -418,7 +446,7 @@ button:disabled {
   }
 
   .nav-list {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
   }
 
   h1 {

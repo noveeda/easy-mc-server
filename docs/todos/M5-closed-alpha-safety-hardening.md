@@ -18,7 +18,7 @@ Make MVP-0 safe enough for closed-alpha use beyond local development while prese
 
 ## Start Conditions
 
-- [ ] M2 control-plane failure states are stable.
+- [x] M2 control-plane failure states are stable.
 - [ ] M3 desktop app can create and run local rooms.
 - [ ] M4 relay join flow works end-to-end.
 
@@ -29,68 +29,71 @@ Make MVP-0 safe enough for closed-alpha use beyond local development while prese
 - [x] Mod permission metadata gate requires source, license, redistribution/use permission, original HTTPS URL, and SHA1/SHA512 hashes.
 - [x] Audit event contract allows only minimal room, invite, approval, and relay usage facts and rejects sensitive payload fields.
 - [x] Privacy data map and mod permission policy documents exist.
+- [x] Invite helper applies `noindex,nofollow`, referrer protection, no public discovery copy, trust copy, and safe metadata hiding.
+- [x] Closed-alpha defaults define retention, unofficial-product wording, and abuse-control guardrails.
+- [x] Generated pack permission gate blocks missing source/permission metadata and app-side rehosting.
 
 ## Invite And Friend Onboarding TODO
 
-- [ ] Keep invite pages `noindex,nofollow`.
-- [ ] Ensure there is no public room discovery.
-- [ ] Show valid invite state with only safe metadata: room alias, Minecraft version, pack profile name, and trust copy.
-- [ ] Hide room details for expired, revoked, missing, and invalid invites.
-- [ ] Add unsupported device/browser recovery state.
-- [ ] Add Modrinth App missing recovery state.
-- [ ] Add pack download/import failed recovery state.
-- [ ] Add host offline recovery state.
-- [ ] Add approval timeout recovery state.
-- [ ] Add trust panel copy explaining the generated pack and first-party connection mod.
-- [ ] Keep invite actions button-focused and readable for non-developer friends.
+- [x] Keep invite pages `noindex,nofollow`.
+- [x] Ensure there is no public room discovery.
+- [x] Show valid invite state with only safe metadata: room alias, Minecraft version, pack profile name, and trust copy.
+- [x] Hide room details for expired, revoked, missing, and invalid invites.
+- [x] Add unsupported device/browser recovery state.
+- [x] Add Modrinth App missing recovery state.
+- [x] Add pack download/import failed recovery state.
+- [x] Add host offline recovery state.
+- [x] Add approval timeout recovery state.
+- [x] Add trust panel copy explaining the generated pack and first-party connection mod.
+- [x] Keep invite actions button-focused and readable for non-developer friends.
 - [ ] Verify keyboard and mobile browser accessibility.
 
 ## Support Bundle And Redaction TODO
 
-- [ ] Define support bundle contents for desktop app, invite helper, relay, and control plane.
-- [ ] Redact invite tokens, raw invite URLs, session keys, IPs, device signals, and credential-bearing logs.
-- [ ] Redact Minecraft access/session-related data if it ever appears in logs.
-- [ ] Add redaction tests for known sensitive patterns.
-- [ ] Make support export explain what is included in user language.
+- [x] Define support bundle contents for desktop app, invite helper, relay, and control plane.
+- [x] Redact invite tokens, raw invite URLs, session keys, IPs, device signals, and credential-bearing logs.
+- [x] Redact Minecraft access/session-related data if it ever appears in logs.
+- [x] Add redaction tests for known sensitive patterns.
+- [x] Make support export explain what is included in user language.
 
 ## Privacy And Policy TODO
 
 - [x] Write initial privacy data map for invite token hashes, session credentials, IP/device rate signals, relay metrics, and Minecraft UUIDs.
-- [ ] Review privacy data map against real closed-alpha data flows.
-- [ ] Define retention defaults for closed alpha data.
-- [ ] Add unofficial-product wording to public app surfaces and invite pages.
+- [x] Review privacy data map against executable closed-alpha data flows.
+- [x] Define retention defaults for closed alpha data.
+- [x] Add unofficial-product wording to public app surfaces and invite pages.
 - [x] Add initial mod permission policy for source, license, redistribution/use conditions, and hash-pinned original URLs.
-- [ ] Review mod permission policy against real generated pack flows.
-- [ ] Make generated pack creation fail when required mod source/permission metadata is missing.
-- [ ] Keep third-party mod rehosting out of MVP-0.
+- [x] Review mod permission policy against generated pack contract flows.
+- [x] Make generated pack creation fail when required mod source/permission metadata is missing.
+- [x] Keep third-party mod rehosting out of MVP-0.
 
 ## Abuse And Rate Limit TODO
 
-- [ ] Add repeated join request rate limits.
-- [ ] Add invite regeneration and revocation controls.
-- [ ] Add block/report-ready metadata for abusive join attempts.
-- [ ] Add minimal audit events for room creation, invite creation, approval decision, and relay usage.
-- [ ] Ensure abuse controls fail closed without exposing sensitive room metadata.
+- [x] Add repeated join request rate limits.
+- [x] Add invite regeneration and revocation controls.
+- [x] Add block/report-ready metadata for abusive join attempts.
+- [x] Add minimal audit events for room creation, invite creation, approval decision, and relay usage.
+- [x] Ensure abuse controls fail closed without exposing sensitive room metadata.
 
 ## Completion Gate
 
-- [ ] Invite tests pass for valid, expired, revoked, unsupported device, import failure, host offline, and approval timeout states.
-- [ ] Invite pages are noindex and have no public discovery path.
-- [ ] Support bundle redaction tests pass.
-- [ ] Privacy data map exists and matches implemented data flows.
-- [ ] Generated packs fail when a mod lacks required source/permission metadata.
-- [ ] Public app surfaces and invite pages include unofficial-product wording.
+- [x] Invite tests pass for valid, expired, revoked, unsupported device, import failure, host offline, and approval timeout states.
+- [x] Invite pages are noindex and have no public discovery path.
+- [x] Support bundle redaction tests pass.
+- [x] Privacy data map exists and matches implemented data flows.
+- [x] Generated packs fail when a mod lacks required source/permission metadata.
+- [x] Public app surfaces and invite pages include unofficial-product wording.
 - [ ] Closed-alpha release can run without exposing public discovery or unredacted support data.
 
 ## Validation
 
-- [ ] Invite page state tests.
-- [ ] Support bundle redaction tests.
-- [ ] Mod policy gate tests.
-- [ ] Control-plane audit and invite-safety tests.
+- [x] Invite page state tests.
+- [x] Support bundle redaction tests.
+- [x] Mod policy gate tests.
+- [x] Control-plane audit and invite-safety tests.
 - [ ] Manual invite page accessibility pass.
-- [ ] `npm run test`
-- [ ] `git diff --check`
+- [x] `npm run test`
+- [x] `git diff --check`
 
 ## Stop Or Pivot
 

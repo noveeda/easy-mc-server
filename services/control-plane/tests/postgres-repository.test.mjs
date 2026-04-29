@@ -152,6 +152,96 @@ test("repository rolls back and releases client when a transactional write fails
   assert.equal(clients[0].released, true);
 });
 
+test("repository withTransaction lets approval decision and first session commit atomically", async () => {
+  const clock = createMemoryClock();
+  const { pool, calls } = createFakePool();
+  const repository = createPostgresControlPlaneRepository({ pool, clock });
+
+  const result = await repository.withTransaction(async (transactionRepository) => {
+    await transactionRepository.saveApproval({
+      id: REQUEST_ID,
+      roomId: ROOM_ID,
+      inviteId: INVITE_ID,
+      friendId: "friend-a",
+      minecraftUuid: "uuid-a",
+      state: ApprovalStates.APPROVED,
+      createdAt: clock.now(),
+      decidedAt: clock.now()
+    });
+    await transactionRepository.saveSession({
+      id: SESSION_ID,
+      roomId: ROOM_ID,
+      inviteId: INVITE_ID,
+      requestId: REQUEST_ID,
+      minecraftUuid: "uuid-a",
+      sessionCredential: RAW_SESSION_CREDENTIAL,
+      state: SessionStates.ISSUED,
+      issuedAt: clock.now(),
+      expiresAt: clock.now() + 60_000
+    });
+    await transactionRepository.recordAuditEvent({
+      id: "audit-a",
+      type: "approval_decided",
+      roomId: ROOM_ID,
+      requestId: REQUEST_ID,
+      metadata: {
+        sessionCredential: RAW_SESSION_CREDENTIAL
+      }
+    });
+
+    return { ok: true };
+  });
+
+  assert.deepEqual(result, { ok: true });
+  assert.equal(calls.filter((call) => call.sql === "BEGIN").length, 1);
+  assert.equal(calls.filter((call) => call.sql === "COMMIT").length, 1);
+  assert.equal(calls.some((call) => call.sql === "ROLLBACK"), false);
+  assert.equal(calls.findIndex((call) => call.sql.includes("INSERT INTO approval_requests")) > 0, true);
+  assert.equal(calls.findIndex((call) => call.sql.includes("INSERT INTO sessions")) > 0, true);
+  assert.equal(JSON.stringify(calls).includes(RAW_SESSION_CREDENTIAL), false);
+});
+
+test("repository withTransaction rolls back approval decision when session persistence fails", async () => {
+  const error = new Error("session insert failed");
+  const { pool, calls } = createFakePool({
+    handlers: [
+      {
+        match: (sql) => sql.includes("INSERT INTO sessions"),
+        result: () => {
+          throw error;
+        }
+      }
+    ]
+  });
+  const repository = createPostgresControlPlaneRepository({ pool });
+
+  await assert.rejects(
+    () =>
+      repository.withTransaction(async (transactionRepository) => {
+        await transactionRepository.saveApproval({
+          id: REQUEST_ID,
+          roomId: ROOM_ID,
+          inviteId: INVITE_ID,
+          minecraftUuid: "uuid-a",
+          state: ApprovalStates.APPROVED
+        });
+        await transactionRepository.saveSession({
+          id: SESSION_ID,
+          roomId: ROOM_ID,
+          inviteId: INVITE_ID,
+          requestId: REQUEST_ID,
+          minecraftUuid: "uuid-a",
+          state: SessionStates.ISSUED
+        });
+      }),
+    error
+  );
+
+  assert.equal(calls.filter((call) => call.sql === "BEGIN").length, 1);
+  assert.equal(calls.filter((call) => call.sql === "ROLLBACK").length, 1);
+  assert.equal(calls.some((call) => call.sql === "COMMIT"), false);
+});
+
 test("repository rejects immutable identity reparenting on conflict", async () => {
   const { pool, calls } = createFakePool({
     handlers: [

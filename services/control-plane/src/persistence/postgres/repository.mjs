@@ -33,8 +33,10 @@ export function createPostgresControlPlaneRepository(options = {}) {
 
   const { pool } = options;
   const clock = options.clock ?? { now: () => Date.now() };
+  const queryable = options.client ?? pool;
+  const inTransaction = Boolean(options.client);
 
-  return {
+  const repository = {
     saveRoom,
     readRoom,
     saveInvite,
@@ -50,12 +52,15 @@ export function createPostgresControlPlaneRepository(options = {}) {
     readRateLimitCounter,
     cleanupExpiredState,
     recordAuditEvent,
-    readAuditEvents
+    readAuditEvents,
+    withTransaction: runInServiceTransaction
   };
+
+  return repository;
 
   async function saveRoom(record) {
     const stored = sanitizeRecord(requireRecordId(record, "room"));
-    await withTransaction(pool, async (client) => {
+    await runWriteTransaction(async (client) => {
       await client.query(
         `INSERT INTO rooms (id, host_id, alias, minecraft_version, pack_profile_name, state, created_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -84,7 +89,7 @@ export function createPostgresControlPlaneRepository(options = {}) {
   }
 
   async function readRoom(roomId) {
-    const result = await pool.query(
+    const result = await queryable.query(
       `SELECT id, host_id AS "hostId", alias, minecraft_version AS "minecraftVersion",
               pack_profile_name AS "packProfileName", state, created_at AS "createdAt", updated_at AS "updatedAt"
        FROM rooms
@@ -102,7 +107,7 @@ export function createPostgresControlPlaneRepository(options = {}) {
       stored.tokenHash = hashSensitiveValue(input.token);
     }
 
-    await withTransaction(pool, async (client) => {
+    await runWriteTransaction(async (client) => {
       await client.query(
         `INSERT INTO invites (id, room_id, token_hash, state, created_at, expires_at, revoked_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -148,7 +153,7 @@ export function createPostgresControlPlaneRepository(options = {}) {
 
   async function saveApproval(record) {
     const stored = sanitizeRecord(requireRecordId(record, "approval"));
-    await withTransaction(pool, async (client) => {
+    await runWriteTransaction(async (client) => {
       await client.query(
         `INSERT INTO approval_requests
            (id, room_id, invite_id, friend_id, minecraft_uuid, display_name, state, created_at, decided_at)
@@ -180,7 +185,7 @@ export function createPostgresControlPlaneRepository(options = {}) {
   }
 
   async function readApproval(approvalId) {
-    const result = await pool.query(
+    const result = await queryable.query(
       `SELECT id, room_id AS "roomId", invite_id AS "inviteId", friend_id AS "friendId",
               minecraft_uuid AS "minecraftUuid", display_name AS "displayName",
               state, created_at AS "createdAt", decided_at AS "decidedAt"
@@ -199,7 +204,7 @@ export function createPostgresControlPlaneRepository(options = {}) {
       stored.sessionCredentialHash = hashSensitiveValue(input.sessionCredential);
     }
 
-    await withTransaction(pool, async (client) => {
+    await runWriteTransaction(async (client) => {
       await client.query(
         `INSERT INTO sessions
            (id, room_id, invite_id, request_id, minecraft_uuid, session_credential_hash, state, issued_at, expires_at)
@@ -231,7 +236,7 @@ export function createPostgresControlPlaneRepository(options = {}) {
   }
 
   async function readSession(sessionId) {
-    const result = await pool.query(
+    const result = await queryable.query(
       `SELECT id, room_id AS "roomId", invite_id AS "inviteId", request_id AS "requestId",
               minecraft_uuid AS "minecraftUuid", session_credential_hash AS "sessionCredentialHash",
               state, issued_at AS "issuedAt", expires_at AS "expiresAt"
@@ -249,7 +254,7 @@ export function createPostgresControlPlaneRepository(options = {}) {
 
   async function savePresence(record) {
     const stored = sanitizeRecord(requirePresence(record));
-    await withTransaction(pool, async (client) => {
+    await runWriteTransaction(async (client) => {
       await client.query(
         `INSERT INTO presence (room_id, host_id, state, last_seen_at, expires_at)
          VALUES ($1, $2, $3, $4, $5)
@@ -267,7 +272,7 @@ export function createPostgresControlPlaneRepository(options = {}) {
   }
 
   async function readPresence(roomId) {
-    const result = await pool.query(
+    const result = await queryable.query(
       `SELECT room_id AS "roomId", host_id AS "hostId", state,
               last_seen_at AS "lastSeenAt", expires_at AS "expiresAt"
        FROM presence
@@ -286,7 +291,7 @@ export function createPostgresControlPlaneRepository(options = {}) {
     const now = clock.now();
     const signalHash = hashSensitiveValue(signal);
     const id = `${scope}:${signalHash}`;
-    const result = await pool.query(
+    const result = await queryable.query(
       `INSERT INTO rate_limit_counters
          (id, scope, signal_hash, count, limit_value, window_ms, reset_at, updated_at)
        VALUES ($1, $2, $3, 1, $4, $5, $6, $7)
@@ -330,7 +335,7 @@ export function createPostgresControlPlaneRepository(options = {}) {
       return fail(ErrorStates.RATE_LIMITED);
     }
 
-    const result = await pool.query(
+    const result = await queryable.query(
       `SELECT id, scope, signal_hash AS "signalHash", count, limit_value AS "limit",
               window_ms AS "windowMs", reset_at AS "resetAt", updated_at AS "updatedAt"
        FROM rate_limit_counters
@@ -342,7 +347,7 @@ export function createPostgresControlPlaneRepository(options = {}) {
   }
 
   async function cleanupExpiredState({ now = clock.now() } = {}) {
-    return withTransaction(pool, async (client) => {
+    return runWriteTransaction(async (client) => {
       const sessions = await client.query(
         `DELETE FROM sessions
          WHERE expires_at IS NOT NULL AND expires_at <= $1`,
@@ -389,7 +394,7 @@ export function createPostgresControlPlaneRepository(options = {}) {
       ...event
     });
 
-    await withTransaction(pool, async (client) => {
+    await runWriteTransaction(async (client) => {
       await client.query(
         `INSERT INTO audit_events
            (id, type, actor_id, room_id, invite_id, request_id, session_id_hash, metadata, occurred_at)
@@ -423,7 +428,7 @@ export function createPostgresControlPlaneRepository(options = {}) {
       conditions.push(`room_id = $${params.length}`);
     }
 
-    const result = await pool.query(
+    const result = await queryable.query(
       `SELECT id, type, actor_id AS "actorId", room_id AS "roomId", invite_id AS "inviteId",
               request_id AS "requestId", session_id_hash AS "sessionIdHash", metadata, occurred_at AS "occurredAt"
        FROM audit_events
@@ -437,7 +442,7 @@ export function createPostgresControlPlaneRepository(options = {}) {
 
   async function selectInviteBy(key, value) {
     const column = inviteLookupColumn(key);
-    const result = await pool.query(
+    const result = await queryable.query(
       `SELECT id, room_id AS "roomId", token_hash AS "tokenHash", state,
               created_at AS "createdAt", expires_at AS "expiresAt", revoked_at AS "revokedAt"
        FROM invites
@@ -458,9 +463,27 @@ export function createPostgresControlPlaneRepository(options = {}) {
         (!session.expiresAt || session.expiresAt > clock.now())
     );
   }
+
+  async function runInServiceTransaction(operation) {
+    if (inTransaction) {
+      return operation(repository);
+    }
+
+    return withPgTransaction(pool, async (client) =>
+      operation(createPostgresControlPlaneRepository({ pool, clock, client }))
+    );
+  }
+
+  async function runWriteTransaction(operation) {
+    if (inTransaction) {
+      return operation(queryable);
+    }
+
+    return withPgTransaction(pool, operation);
+  }
 }
 
-async function withTransaction(pool, operation) {
+async function withPgTransaction(pool, operation) {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
