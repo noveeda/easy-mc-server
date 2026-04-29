@@ -3,7 +3,12 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "scripts": {
+    "test": "node --test --test-isolation=none tests/*.test.mjs"
+  },
   "exports": {
-    "./domain/simulation": "./src/domain/simulation.mjs"
+    "./domain/simulation": "./src/domain/simulation.mjs",
+    "./http/router-adapter": "./src/http/router-adapter.mjs",
+    "./persistence/memory-store": "./src/persistence/memory-store.mjs"
   }
 }

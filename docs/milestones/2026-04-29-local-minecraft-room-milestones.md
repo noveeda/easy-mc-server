@@ -104,7 +104,7 @@ source_plan: "../plans/2026-04-29-001-feature-local-minecraft-room-plan.md"
 
 ## M2. Foundation, Protocol, Control Plane
 
-**Status:** In progress. The no-dependency contract MVP is implemented by [2026-04-30-001-m2-contract-foundation-plan.md](../plans/2026-04-30-001-m2-contract-foundation-plan.md), and the HTTP-shaped control-plane boundary is implemented by [2026-04-30-002-m2-control-plane-http-boundary-plan.md](../plans/2026-04-30-002-m2-control-plane-http-boundary-plan.md). Workspace boundaries, executable protocol permissions, safe invite metadata, in-memory room/invite/approval/session flow tests, and HTTP request/response redaction tests exist. Fastify/PostgreSQL-backed alpha state remains pending before full M2 completion.
+**Status:** In progress. The no-dependency contract MVP is implemented by [2026-04-30-001-m2-contract-foundation-plan.md](../plans/2026-04-30-001-m2-contract-foundation-plan.md), the HTTP-shaped control-plane boundary is implemented by [2026-04-30-002-m2-control-plane-http-boundary-plan.md](../plans/2026-04-30-002-m2-control-plane-http-boundary-plan.md), and the dependency-free persistence/router contracts are implemented by [2026-04-30-003-m2-m7-executable-alpha-simulation-plan.md](../plans/2026-04-30-003-m2-m7-executable-alpha-simulation-plan.md). Workspace boundaries, executable protocol permissions, safe invite metadata, in-memory room/invite/approval/session flow tests, HTTP request/response redaction tests, persistence redaction tests, rate-limit counter tests, audit-event tests, and router-adapter DTO tests exist. Real Fastify/PostgreSQL-backed alpha state remains pending before full M2 completion.
 
 **Goal:** Create the repo foundation and shared contracts that make room, invite, approval, session, permission, and TTL flows testable.
 
@@ -133,6 +133,8 @@ source_plan: "../plans/2026-04-29-001-feature-local-minecraft-room-plan.md"
 ---
 
 ## M3. Host App And Local Room Runtime
+
+**Status:** In progress. Dependency-free host runtime and bridge approval contracts are implemented by [2026-04-30-003-m2-m7-executable-alpha-simulation-plan.md](../plans/2026-04-30-003-m2-m7-executable-alpha-simulation-plan.md). Real Tauri shell, Windows process control, Fabric server bootstrap, and manual Minecraft validation remain pending before full M3 completion.
 
 **Goal:** Let the host create and run a local Fabric room from the Windows desktop app.
 
@@ -163,6 +165,8 @@ source_plan: "../plans/2026-04-29-001-feature-local-minecraft-room-plan.md"
 
 ## M4. Relay Join End-To-End
 
+**Status:** In progress. Dependency-free relay, quota, open-proxy guard, and client loopback contracts are implemented by [2026-04-30-003-m2-m7-executable-alpha-simulation-plan.md](../plans/2026-04-30-003-m2-m7-executable-alpha-simulation-plan.md). Real relay sockets, host tunnel integration, Fabric client mod runtime, and manual multiplayer validation remain pending before full M4 completion.
+
 **Goal:** Prove that a friend client mod can join the host room through loopback proxy and relay-only transport.
 
 **Deliverables:**
@@ -190,6 +194,8 @@ source_plan: "../plans/2026-04-29-001-feature-local-minecraft-room-plan.md"
 ---
 
 ## M5. Closed Alpha Safety Hardening
+
+**Status:** In progress. Dependency-free invite recovery, support redaction, mod permission, privacy map, and audit-event contracts are implemented by [2026-04-30-003-m2-m7-executable-alpha-simulation-plan.md](../plans/2026-04-30-003-m2-m7-executable-alpha-simulation-plan.md). Real invite UI integration, support bundle export, and closed-alpha abuse controls remain pending before full M5 completion.
 
 **Goal:** Make MVP-0 safe enough for closed-alpha use beyond local development.
 
@@ -220,6 +226,8 @@ source_plan: "../plans/2026-04-29-001-feature-local-minecraft-room-plan.md"
 
 ## M6. Curated Catalog Beta
 
+**Status:** In progress. Dependency-free Modrinth-style metadata, curated pack, dependency, side classification, and compatibility-label contracts are implemented by [2026-04-30-003-m2-m7-executable-alpha-simulation-plan.md](../plans/2026-04-30-003-m2-m7-executable-alpha-simulation-plan.md). Real catalog ingestion, operator review workflow, and beta rollout remain pending before full M6 completion.
+
 **Goal:** Expand beyond fixed packs into curated recommended and popular mods after the MVP-0 room loop is validated.
 
 **Deliverables:**
@@ -247,6 +255,8 @@ source_plan: "../plans/2026-04-29-001-feature-local-minecraft-room-plan.md"
 ---
 
 ## M7. Direct P2P Beta
+
+**Status:** In progress. Dependency-free transport candidate exchange, direct selection, privacy copy, and relay fallback contracts are implemented by [2026-04-30-003-m2-m7-executable-alpha-simulation-plan.md](../plans/2026-04-30-003-m2-m7-executable-alpha-simulation-plan.md). Real host/client P2P adapter, privacy approval, and network-pair validation remain pending before full M7 completion.
 
 **Goal:** Reduce relay cost and latency by attempting direct connection with automatic relay fallback.
 

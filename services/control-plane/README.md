@@ -5,3 +5,5 @@ M2 starts with an in-memory domain simulation instead of a Fastify/PostgreSQL se
 Fastify routes and PostgreSQL persistence are intentionally deferred until these contracts are stable.
 
 The `src/http/` boundary exposes HTTP-shaped handler functions over the simulation without opening sockets or adding runtime dependencies. It fixes API request/response DTOs for host room and invite creation, friend invite lookup and join requests, host approval, and service session issuance while keeping raw invite tokens, session ids, and host internals out of responses.
+
+The router adapter is a contract/test adapter. Do not mount it as a production route surface with client-supplied `x-actor-id` or `x-actor-type` headers. A real Fastify adapter must derive host and service actors from trusted authentication middleware before calling these handlers.

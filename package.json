@@ -9,6 +9,6 @@
     "mods/*"
   ],
   "scripts": {
-    "test": "node scripts/verify-static-prototypes.mjs && node --test --test-isolation=none tests/smoke/*.test.mjs packages/protocol/tests/*.test.mjs services/control-plane/tests/*.test.mjs"
+    "test": "node scripts/verify-static-prototypes.mjs && node --test --test-isolation=none tests/smoke/*.test.mjs apps/*/tests/*.test.mjs packages/*/tests/*.test.mjs services/*/tests/*.test.mjs mods/*/tests/*.test.mjs"
   }
 }

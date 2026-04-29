@@ -1,0 +1,12 @@
+{
+  "name": "@local-room/compatibility-engine",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.mjs"
+  },
+  "scripts": {
+    "test": "node --test --test-isolation=none tests/*.test.mjs"
+  }
+}

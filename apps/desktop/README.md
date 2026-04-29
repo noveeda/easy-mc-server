@@ -15,3 +15,18 @@ Open `index.html` directly in a browser to review the host flow. `state.js` cont
 The host desktop app is the primary product surface. Invite web pages are secondary helper surfaces for friends who receive a link.
 
 Default UI should keep using room language and avoid explaining ports, firewall rules, Docker, VPN tools, or relay details.
+
+## M3 Host Runtime Contract
+
+`src/runtime/host-runtime.mjs` is the executable M3 contract for later Tauri and Minecraft adapters. It is dependency-free and does not start Java or Fabric directly.
+
+The contract requires:
+
+1. A supported Minecraft version.
+2. Java 21 or newer.
+3. Accepted Minecraft EULA.
+4. Verified Fabric setup files.
+5. A fixed, checksum-verified room pack.
+6. A non-crashed runtime state.
+
+Failures return room-language messages that the desktop UI can show directly. Bridge approval events must use the server-observed Minecraft UUID; a claimed identity from the client can be displayed for context but cannot approve or bypass the room queue.
