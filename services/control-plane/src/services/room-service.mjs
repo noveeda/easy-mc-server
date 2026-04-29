@@ -16,6 +16,33 @@ const DEFAULT_SESSION_TTL_MS = 15 * 60 * 1000;
 const DEFAULT_JOIN_REQUEST_LIMIT = 5;
 const DEFAULT_JOIN_REQUEST_WINDOW_MS = 60 * 1000;
 const HOST_DECISIONS = new Set([ApprovalStates.APPROVED, ApprovalStates.DENIED, ApprovalStates.BLOCKED]);
+const REDACTED = "[redacted]";
+const REDACTED_IP = "[redacted_ip]";
+const REDACTED_INVITE_URL = "[redacted_invite_url]";
+const REDACTED_CREDENTIAL = "[redacted_credential]";
+const sensitiveKeyPattern = /(^|_)(accessToken|authorization|authToken|cookie|credential|deviceSignal|ip|ipAddress|inviteToken|inviteUrl|minecraftAccessToken|password|rawToken|refreshToken|secret|sessionCredential|sessionId|sessionKey|sessionToken|token)(_|$)/i;
+const normalizedSensitiveKeys = new Set([
+  "accesstoken",
+  "authorization",
+  "authtoken",
+  "cookie",
+  "credential",
+  "devicesignal",
+  "ip",
+  "ipaddress",
+  "inviteurl",
+  "invitetoken",
+  "minecraftaccesstoken",
+  "password",
+  "rawtoken",
+  "refreshtoken",
+  "secret",
+  "sessioncredential",
+  "sessionid",
+  "sessionkey",
+  "sessiontoken",
+  "token"
+]);
 
 export function createRoomService(options = {}) {
   if (!options.repository) {
@@ -514,7 +541,7 @@ async function audit(repo, event) {
     return { ok: true };
   }
 
-  return repo.recordAuditEvent(event);
+  return repo.recordAuditEvent(redactAuditValue(event));
 }
 
 async function callHook(hook, context) {
@@ -582,4 +609,42 @@ function fail(reason) {
     ok: false,
     reason
   };
+}
+
+function redactAuditValue(value, key = "") {
+  if (value === null || value === undefined) {
+    return value;
+  }
+
+  if (isSensitiveKey(key)) {
+    return REDACTED;
+  }
+
+  if (typeof value === "string") {
+    return redactAuditText(value);
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((entry) => redactAuditValue(entry));
+  }
+
+  if (typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([entryKey, entryValue]) => [entryKey, redactAuditValue(entryValue, entryKey)]));
+  }
+
+  return value;
+}
+
+function redactAuditText(value) {
+  return String(value)
+    .replace(/https?:\/\/[^\s"'<>]*(?:\/invite\/|\/invites\/|\/friend\/invites\/)[^\s"'<>]*/gi, REDACTED_INVITE_URL)
+    .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, `$1 ${REDACTED_CREDENTIAL}`)
+    .replace(/\b(inviteToken|token|sessionKey|session|access_token|refresh_token|password|credential|secret)=([^&\s"'<>]+)/gi, `$1=${REDACTED_CREDENTIAL}`)
+    .replace(/\b(invite token|session key|session credential|access token|password|credential|secret)\s*[:=]\s*["']?[^"',}\s]+/gi, `$1: ${REDACTED_CREDENTIAL}`)
+    .replace(/\b(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?\b/g, REDACTED_IP);
+}
+
+function isSensitiveKey(key) {
+  const normalized = String(key ?? "").replace(/[^A-Za-z0-9]/g, "").toLowerCase();
+  return sensitiveKeyPattern.test(key) || normalizedSensitiveKeys.has(normalized) || normalized.endsWith("token");
 }

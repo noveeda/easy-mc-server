@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   AbuseControlDefaults,
   AuditEventTypes,
+  InviteAccessibilityDefaults,
   InviteRecoveryStates,
   InviteDiscoveryPolicy,
   RetentionDefaults,
@@ -11,9 +12,11 @@ import {
   buildInviteRecoveryState,
   createAuditEvent,
   describeSupportBundleContract,
+  evaluateClosedAlphaReleaseGate,
   getRetentionDefaults,
   redactSupportBundle,
   validateGeneratedPackPermissionGate,
+  validateInviteAccessibilitySnapshot,
   validateModPermissionMetadata,
   validatePackPolicy
 } from "../src/index.mjs";
@@ -123,6 +126,25 @@ test("support bundle redacts compressed and bracketed IPv6 addresses", () => {
   const serialized = JSON.stringify(redacted);
   assert.doesNotMatch(serialized, /2001:db8::1|::1|2001:db8::2|::ffff:192\.0\.2\.128/);
   assert.match(serialized, /\[REDACTED_IP\]/);
+});
+
+test("support bundle redacts common raw token key variants", () => {
+  const redacted = redactSupportBundle({
+    rawToken: "raw-token-value",
+    authToken: "auth-token-value",
+    inviteUrl: "https://room.example.test/invite/raw-token-value",
+    sessionId: "session-id-value",
+    safe: {
+      roomId: "room-a"
+    }
+  });
+
+  assert.equal(redacted.rawToken, "[REDACTED]");
+  assert.equal(redacted.authToken, "[REDACTED]");
+  assert.equal(redacted.inviteUrl, "[REDACTED]");
+  assert.equal(redacted.sessionId, "[REDACTED]");
+  assert.deepEqual(redacted.safe, { roomId: "room-a" });
+  assert.doesNotMatch(JSON.stringify(redacted), /raw-token-value|auth-token-value|session-id-value/);
 });
 
 test("mod permission metadata gate passes complete original-url metadata", () => {
@@ -246,6 +268,37 @@ test("audit events require allowed types, required fields, and no sensitive payl
       }),
     /sensitive fields/
   );
+
+  assert.deepEqual(
+    createAuditEvent(
+      AuditEventTypes.RELAY_USAGE,
+      {
+        roomId: "room-1",
+        sessionIdHash: "sha256:session",
+        byteCount: 1024
+      },
+      { occurredAt: "2026-04-30T00:01:00.000Z" }
+    ),
+    {
+      type: "relay_usage",
+      occurredAt: "2026-04-30T00:01:00.000Z",
+      payload: {
+        roomId: "room-1",
+        sessionIdHash: "sha256:session",
+        byteCount: 1024
+      }
+    }
+  );
+
+  assert.throws(
+    () =>
+      createAuditEvent(AuditEventTypes.RELAY_USAGE, {
+        roomId: "room-1",
+        sessionId: "session-secret",
+        byteCount: 1024
+      }),
+    /missing required fields/
+  );
 });
 
 test("closed alpha defaults cover discovery, retention, unofficial wording, and abuse controls", () => {
@@ -261,7 +314,130 @@ test("closed alpha defaults cover discovery, retention, unofficial wording, and 
   assert.equal(AbuseControlDefaults.INVITE_REGENERATION_REVOKES_PREVIOUS_INVITE, true);
 });
 
+test("invite accessibility snapshot checks keyboard, mobile, and target-size contract", () => {
+  const result = validateInviteAccessibilitySnapshot({
+    hasViewportMeta: true,
+    hasVisibleFocusStyle: true,
+    mobileBreakpointPx: InviteAccessibilityDefaults.mobileMaxWidthPx,
+    mobileActionsFullWidth: true,
+    textWraps: true,
+    actions: [
+      {
+        accessibleName: "친구 모드팩 받기",
+        keyboardFocusable: true,
+        minHeightPx: InviteAccessibilityDefaults.minInteractiveTargetPx
+      }
+    ]
+  });
+
+  assert.deepEqual(result, {
+    ok: true,
+    failures: [],
+    checkedActions: 1
+  });
+
+  assert.deepEqual(
+    validateInviteAccessibilitySnapshot({
+      actions: [{ accessibleName: "", keyboardFocusable: false, minHeightPx: 32 }]
+    }),
+    {
+      ok: false,
+      failures: [
+        "viewport_meta_missing",
+        "visible_focus_style_missing",
+        "mobile_actions_not_full_width",
+        "text_overflow_risk",
+        "action_accessible_name_missing",
+        "action_keyboard_focus_missing",
+        "action_target_too_small"
+      ],
+      checkedActions: 1
+    }
+  );
+});
+
+test("closed alpha release gate blocks public discovery and unredacted support data", () => {
+  const passing = evaluateClosedAlphaReleaseGate({
+    discovery: {
+      robots: InviteDiscoveryPolicy.robots,
+      xRobotsTag: InviteDiscoveryPolicy.robots,
+      publicDiscovery: false,
+      exposesUnavailableRoomDetails: false,
+      sitemapExposesInvites: false,
+      listingRoute: false,
+      searchRoute: false
+    },
+    surfaces: {
+      invitePage: { includesUnofficialProductWording: true },
+      desktopApp: { includesUnofficialProductWording: true }
+    },
+    inviteAccessibility: {
+      hasViewportMeta: true,
+      hasVisibleFocusStyle: true,
+      mobileBreakpointPx: 520,
+      mobileActionsFullWidth: true,
+      textWraps: true,
+      actions: [{ accessibleName: "친구 모드팩 받기", keyboardFocusable: true, minHeightPx: 44 }]
+    },
+    supportBundleProbe: {
+      bundle: {
+        rawToken: "raw-alpha-token",
+        authToken: "auth-alpha-token",
+        inviteUrl: "https://room.example.test/invite/raw-alpha-token",
+        logs: ["friend from 203.0.113.10 used token=raw-alpha-token"]
+      },
+      forbiddenStrings: ["raw-alpha-token", "auth-alpha-token", "203.0.113.10"]
+    }
+  });
+
+  assert.equal(passing.ok, true);
+  assert.deepEqual(passing.failures, []);
+
+  const failing = evaluateClosedAlphaReleaseGate({
+    discovery: {
+      robots: "index,follow",
+      publicDiscovery: true,
+      exposesUnavailableRoomDetails: true,
+      sitemapExposesInvites: true
+    },
+    surfaces: {
+      invitePage: { includesUnofficialProductWording: false },
+      desktopApp: { includesUnofficialProductWording: false }
+    }
+  });
+
+  assert.equal(failing.ok, false);
+  assert.ok(failing.failures.includes("invite_robots_missing"));
+  assert.ok(failing.failures.includes("invite_x_robots_tag_missing"));
+  assert.ok(failing.failures.includes("public_discovery_enabled"));
+  assert.ok(failing.failures.includes("invite_discovery_route_exposed"));
+  assert.ok(failing.failures.includes("support_bundle_probe_missing"));
+});
+
 test("abuse control audit helpers create minimal non-sensitive events", () => {
+  assert.deepEqual(
+    buildAbuseControlAuditEvent(
+      AuditEventTypes.USER_BLOCKED,
+      {
+        roomId: "room-1",
+        actorId: "host-1",
+        minecraftUuid: "uuid-1",
+        reason: "abuse_report"
+      },
+      { occurredAt: "2026-04-30T00:04:00.000Z" }
+    ),
+    {
+      type: "user_blocked",
+      occurredAt: "2026-04-30T00:04:00.000Z",
+      payload: {
+        roomId: "room-1",
+        actorId: "host-1",
+        minecraftUuid: "uuid-1",
+        reason: "abuse_report"
+      }
+    }
+  );
+
   assert.deepEqual(
     buildAbuseControlAuditEvent(
       AuditEventTypes.JOIN_RATE_LIMITED,

@@ -195,7 +195,7 @@ source_plan: "../plans/2026-04-29-001-feature-local-minecraft-room-plan.md"
 
 ## M5. Closed Alpha Safety Hardening
 
-**Status:** In progress. Dependency-free invite recovery, invite helper safety metadata, `noindex`/no-discovery surface, support redaction, retention defaults, unofficial-product wording, generated-pack permission gate, privacy map, and audit-event contracts exist. Manual accessibility validation, real support bundle export wiring, and release operations remain pending before full M5 completion.
+**Status:** In progress. Dependency-free invite recovery, invite helper safety metadata, `noindex`/no-discovery surface, support redaction, retention defaults, unofficial-product wording, generated-pack permission gate, privacy map, audit-event contracts, closed-alpha release gate contract, and release checklist exist. Manual accessibility validation, real support bundle export wiring, and real M3/M4 runtime/relay completion remain pending before full M5 completion.
 
 **Goal:** Make MVP-0 safe enough for closed-alpha use beyond local development.
 
@@ -207,6 +207,7 @@ source_plan: "../plans/2026-04-29-001-feature-local-minecraft-room-plan.md"
 - Privacy data map for invite token hashes, session credentials, IP/device rate signals, relay metrics, and Minecraft UUIDs.
 - Mod permission policy gate for source, license, redistribution/use conditions, and unofficial-product wording.
 - Abuse controls for repeated join requests, invite regeneration/revocation, and block/report-ready metadata.
+- Closed-alpha release checklist and executable gate for no public discovery, deployed `X-Robots-Tag`, support redaction probes, and invite accessibility contract.
 
 **Completion Criteria:**
 
@@ -214,6 +215,7 @@ source_plan: "../plans/2026-04-29-001-feature-local-minecraft-room-plan.md"
 - U10 audit, invite-safety, and support redaction tests pass.
 - Generated packs fail when a mod lacks required source/permission metadata.
 - Public app surfaces and invite pages include unofficial-product wording.
+- Router mounting, audit metadata, and local materialization path boundaries fail closed.
 - Closed-alpha release can run without exposing public discovery or unredacted support data.
 
 **Stop/Pivot Criteria:**

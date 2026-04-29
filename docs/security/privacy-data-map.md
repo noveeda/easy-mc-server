@@ -53,7 +53,7 @@ The support bundle explanation shown to operators and testers must say that bund
 ## Closed Alpha Defaults
 
 - There is no public room discovery.
-- Invite pages stay `noindex,nofollow`; deployments should also send `X-Robots-Tag: noindex, nofollow`.
+- Invite pages stay `noindex,nofollow`; deployments must also send `X-Robots-Tag: noindex, nofollow` before closed-alpha links are shared.
 - Unavailable invite states hide room details.
 - The product must state that it is not an official Minecraft, Mojang, or Microsoft product and is not endorsed by them.
 - Raw third-party mod files are not rehosted by the app service.

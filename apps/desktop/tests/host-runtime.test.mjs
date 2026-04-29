@@ -352,6 +352,46 @@ test("unsupported versions and unfixed packs fail closed", () => {
   );
 });
 
+test("runtime plan rejects unsafe room ids and artifact file names", () => {
+  const expected = {
+    ok: false,
+    failure: {
+      reason: HostRuntimeFailureReasons.CACHE_LAYOUT_INVALID,
+      message: "Choose a room folder the app can use for setup files."
+    }
+  };
+
+  assert.deepEqual(
+    createHostRuntimePlan({
+      ...baseInput,
+      room: {
+        ...baseInput.room,
+        id: "../outside"
+      }
+    }),
+    expected
+  );
+
+  assert.deepEqual(
+    createHostRuntimePlan({
+      ...baseInput,
+      pack: {
+        ...baseInput.pack,
+        mods: [{ ...baseInput.pack.mods[0], fileName: "../evil.jar" }]
+      }
+    }),
+    expected
+  );
+
+  assert.deepEqual(
+    resolveFabricLoader({
+      minecraftVersion: "1.21.1",
+      loaders: [{ ...baseInput.fabric.loaders[0], launcherJar: "../../fabric.jar" }]
+    }),
+    expected
+  );
+});
+
 test("start, stop, and restart lifecycle simulation never launches a process", () => {
   assert.deepEqual(simulateLifecycleTransition({ current: HostRuntimeStates.STOPPED }, HostRuntimeActions.PREPARE), {
     current: HostRuntimeStates.STOPPED,

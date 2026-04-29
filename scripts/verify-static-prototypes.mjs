@@ -45,6 +45,7 @@ assert(desktopHtml.includes("./state.js"), "Desktop HTML must load state.js befo
 assert(desktopHtml.includes("./app.js"), "Desktop HTML must reference app.js");
 assert(desktopHtml.includes("방 준비하기"), "Desktop app must start from the host room flow");
 assert(desktopHtml.includes("친구 초대"), "Desktop app must include invite creation");
+assert(desktopHtml.includes("공식 제품이 아니며"), "Desktop app must include unofficial-product wording");
 
 const desktopStateSandbox = {};
 runInNewContext(read("apps/desktop/state.js"), desktopStateSandbox);
@@ -69,34 +70,56 @@ assert(!desktopState.prepared && desktopState.request === "pending", "Reset acti
 
 const inviteHtml = read("apps/invite-web/index.html");
 assert(inviteHtml.includes('name="robots" content="noindex,nofollow"'), "Invite helper must stay noindex");
+assert(inviteHtml.includes('name="referrer" content="no-referrer"'), "Invite helper must keep referrer protection");
+assert(inviteHtml.includes('name="viewport" content="width=device-width, initial-scale=1"'), "Invite helper must keep mobile viewport metadata");
 assert(!inviteHtml.includes("state-picker"), "Invite helper must not expose QA state picker controls");
 assert(inviteHtml.includes("친구 방 초대"), "Invite helper must stay friend-scoped");
 assert(inviteHtml.includes('id="room-facts"'), "Invite helper must allow unavailable state to hide room details");
+assert(inviteHtml.includes("공식 제품이 아니며"), "Invite helper must include unofficial-product wording");
 
 const inviteScript = read("apps/invite-web/app.js");
+const inviteStyles = read("apps/invite-web/styles.css");
 assert(
   inviteScript.includes("roomFacts.hidden = Boolean(state.unavailable)"),
   "Unavailable invite state must hide room details"
 );
+assert(inviteStyles.includes("a:focus-visible"), "Invite helper must keep visible focus styles");
+assert(inviteStyles.includes("min-height: 44px"), "Invite actions must keep touch-friendly target size");
+assert(inviteStyles.includes("width: 100%"), "Invite actions must become full-width on mobile");
 const inviteDom = createInviteDomSandbox("?state=unknown_state");
 runInNewContext(inviteScript, inviteDom);
 assert(inviteDom.elements.title.textContent === "초대를 열 수 없습니다", "Unknown invite states must fail closed");
 assert(inviteDom.elements.roomFacts.hidden === true, "Unknown invite states must hide room details");
 
-const expectedInviteStates = [
-  "ready",
-  "modrinthMissing",
-  "packDownloaded",
-  "importFailed",
-  "unsupported",
-  "hostOffline",
-  "pending",
-  "approvalTimeout",
-  "unavailable"
-];
+const expectedInviteStates = {
+  valid: { title: "Cozy Performance Room", hidden: false, actions: 2 },
+  expired: { title: "초대가 만료되었습니다", hidden: true, actions: 1 },
+  revoked: { title: "초대가 취소되었습니다", hidden: true, actions: 1 },
+  missing: { title: "초대를 찾을 수 없습니다", hidden: true, actions: 1 },
+  invalid: { title: "초대를 열 수 없습니다", hidden: true, actions: 1 },
+  unsupported: { title: "Windows PC에서 열어 주세요", hidden: true, actions: 1 },
+  modrinthMissing: { title: "Modrinth App이 필요합니다", hidden: true, actions: 2 },
+  pack_download_failed: { title: "팩 다운로드에 실패했습니다", hidden: true, actions: 2 },
+  importFailed: { title: "팩 가져오기에 실패했습니다", hidden: true, actions: 2 },
+  hostOffline: { title: "호스트가 준비되지 않았습니다", hidden: true, actions: 2 },
+  approvalTimeout: { title: "승인 시간이 지났습니다", hidden: true, actions: 2 },
+  pending: { title: "Cozy Performance Room", hidden: false, actions: 2 },
+  unavailable: { title: "초대를 열 수 없습니다", hidden: true, actions: 1 }
+};
 
-for (const state of expectedInviteStates) {
-  assert(inviteScript.includes(`${state}:`) || inviteScript.includes(`${state}`), `Invite app must define state: ${state}`);
+for (const [state, expected] of Object.entries(expectedInviteStates)) {
+  const stateDom = createInviteDomSandbox(`?state=${state}`);
+  runInNewContext(inviteScript, stateDom);
+
+  assert(stateDom.elements.title.textContent === expected.title, `Invite state ${state} must render the expected title`);
+  assert(stateDom.elements.roomFacts.hidden === expected.hidden, `Invite state ${state} must set safe room metadata visibility`);
+  assert(stateDom.elements.actions.children.length === expected.actions, `Invite state ${state} must render expected action count`);
+
+  for (const action of stateDom.elements.actions.children) {
+    assert(action.attributes.role === "button", `Invite state ${state} action must be button-focused`);
+    assert(/\S/.test(action.textContent), `Invite state ${state} action must have readable text`);
+    assert(action.href, `Invite state ${state} action must have a target`);
+  }
 }
 
 const packTemplate = JSON.parse(
@@ -153,7 +176,13 @@ function createInviteDomSandbox(search) {
       },
       createElement() {
         return {
-          setAttribute() {}
+          textContent: "",
+          href: "",
+          className: "",
+          attributes: {},
+          setAttribute(name, value) {
+            this.attributes[name] = value;
+          }
         };
       }
     }

@@ -245,6 +245,51 @@ test("local process intent rejects invalid plans and unsupported actions", () =>
   });
 });
 
+test("local adapter rejects materialization paths outside app data root", () => {
+  const traversalPlan = {
+    ...createPlan(),
+    mods: {
+      ...createPlan().mods,
+      entries: [
+        {
+          ...createPlan().mods.entries[0],
+          source: "C:/Users/Alice/AppData/Roaming/RoomBuilder/cache/downloads/fabric-api.jar",
+          target: "C:/Users/Alice/AppData/Roaming/Other/mods/fabric-api.jar"
+        }
+      ]
+    }
+  };
+
+  assert.deepEqual(createRoomMaterializationPlan(traversalPlan), {
+    ok: false,
+    failure: {
+      reason: LocalRuntimeAdapterFailureReasons.INVALID_RUNTIME_PLAN,
+      message: "Prepare the room before opening it."
+    }
+  });
+
+  const outsideSourcePlan = {
+    ...createPlan(),
+    mods: {
+      ...createPlan().mods,
+      entries: [
+        {
+          ...createPlan().mods.entries[0],
+          source: "C:/Temp/fabric-api.jar"
+        }
+      ]
+    }
+  };
+
+  assert.deepEqual(createRoomMaterializationPlan(outsideSourcePlan), {
+    ok: false,
+    failure: {
+      reason: LocalRuntimeAdapterFailureReasons.INVALID_RUNTIME_PLAN,
+      message: "Prepare the room before opening it."
+    }
+  });
+});
+
 test("server properties serializer keeps Minecraft properties file format", () => {
   assert.equal(
     serializeServerProperties({

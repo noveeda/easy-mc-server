@@ -32,6 +32,10 @@ Make MVP-0 safe enough for closed-alpha use beyond local development while prese
 - [x] Invite helper applies `noindex,nofollow`, referrer protection, no public discovery copy, trust copy, and safe metadata hiding.
 - [x] Closed-alpha defaults define retention, unofficial-product wording, and abuse-control guardrails.
 - [x] Generated pack permission gate blocks missing source/permission metadata and app-side rehosting.
+- [x] Closed-alpha release gate contract blocks public discovery, missing `X-Robots-Tag`, missing unofficial-product wording, failed invite accessibility, and unredacted support probes.
+- [x] Trusted actor derivation is required before mounting the dependency-free router adapter.
+- [x] Audit metadata redacts sensitive free-text values before persistence.
+- [x] Local runtime and materialization plans reject unsafe room ids, artifact names, traversal paths, and app-data boundary escapes.
 
 ## Invite And Friend Onboarding TODO
 
@@ -46,7 +50,7 @@ Make MVP-0 safe enough for closed-alpha use beyond local development while prese
 - [x] Add approval timeout recovery state.
 - [x] Add trust panel copy explaining the generated pack and first-party connection mod.
 - [x] Keep invite actions button-focused and readable for non-developer friends.
-- [ ] Verify keyboard and mobile browser accessibility.
+- [x] Verify keyboard and mobile browser accessibility with an executable static contract.
 
 ## Support Bundle And Redaction TODO
 
@@ -54,7 +58,7 @@ Make MVP-0 safe enough for closed-alpha use beyond local development while prese
 - [x] Redact invite tokens, raw invite URLs, session keys, IPs, device signals, and credential-bearing logs.
 - [x] Redact Minecraft access/session-related data if it ever appears in logs.
 - [x] Add redaction tests for known sensitive patterns.
-- [x] Make support export explain what is included in user language.
+- [x] Make the support export contract and closed-alpha runbook explain what is included in user language.
 
 ## Privacy And Policy TODO
 
@@ -80,9 +84,10 @@ Make MVP-0 safe enough for closed-alpha use beyond local development while prese
 - [x] Invite tests pass for valid, expired, revoked, unsupported device, import failure, host offline, and approval timeout states.
 - [x] Invite pages are noindex and have no public discovery path.
 - [x] Support bundle redaction tests pass.
-- [x] Privacy data map exists and matches implemented data flows.
+- [x] Privacy data map exists for implemented data flows.
 - [x] Generated packs fail when a mod lacks required source/permission metadata.
 - [x] Public app surfaces and invite pages include unofficial-product wording.
+- [x] Closed-alpha release gate contract blocks public discovery and unredacted support data.
 - [ ] Closed-alpha release can run without exposing public discovery or unredacted support data.
 
 ## Validation
@@ -91,6 +96,9 @@ Make MVP-0 safe enough for closed-alpha use beyond local development while prese
 - [x] Support bundle redaction tests.
 - [x] Mod policy gate tests.
 - [x] Control-plane audit and invite-safety tests.
+- [x] Static invite accessibility contract.
+- [x] Closed-alpha release gate contract.
+- [x] Router trusted-actor, audit redaction, and local path boundary regression tests.
 - [ ] Manual invite page accessibility pass.
 - [x] `npm run test`
 - [x] `git diff --check`

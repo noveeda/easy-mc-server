@@ -164,6 +164,26 @@ test("invite revoke and regeneration produce audit events without raw invite tok
   assert.equal(serialized.includes("new-invite-token-secret"), false);
 });
 
+test("audit metadata redacts sensitive values from free-text fields", async () => {
+  const clock = createMemoryClock();
+  const repository = createFakeRepository({ clock });
+  const service = createService({ clock, repository });
+  seedInvite(repository, clock);
+
+  const result = await service.revokeInvite({
+    actorId: HOST_ID,
+    inviteId: INVITE_ID,
+    reason: "rotated after https://room.example.test/invite/raw-token?token=abc123 from 203.0.113.7"
+  });
+
+  assert.equal(result.ok, true);
+
+  const [event] = repository.readAuditEvents({ type: "invite_revoked" });
+  assert.match(event.metadata.reason, /\[redacted_invite_url\]/);
+  assert.doesNotMatch(event.metadata.reason, /raw-token|abc123|203\.0\.113\.7/);
+  assert.match(event.metadata.reason, /\[redacted_ip\]/);
+});
+
 test("approval decision audit excludes tokens and session credentials", async () => {
   const clock = createMemoryClock();
   const repository = createFakeRepository({ clock });

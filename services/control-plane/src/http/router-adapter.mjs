@@ -14,6 +14,7 @@ const ROUTES = Object.freeze([
 
 export function createControlPlaneRouterAdapter(options = {}) {
   const boundary = options.boundary ?? createControlPlaneHttpBoundary(options.boundaryOptions);
+  const deriveActor = options.deriveActor;
 
   async function inject(request = {}) {
     return boundary.handle({
@@ -29,15 +30,20 @@ export function createControlPlaneRouterAdapter(options = {}) {
       throw new TypeError("router adapter requires an app with a route() function");
     }
 
+    if (typeof deriveActor !== "function") {
+      throw new TypeError("router adapter register() requires deriveActor(request)");
+    }
+
     for (const route of ROUTES) {
       app.route({
         method: route.method,
         url: route.url,
         handler: async (request, reply) => {
+          const actor = await deriveActor(request);
           const response = await inject({
             method: request?.method ?? route.method,
             path: request?.url ?? request?.path ?? route.url,
-            headers: request?.headers,
+            headers: trustedActorHeaders(actor),
             body: request?.body
           });
 
@@ -57,6 +63,22 @@ export function createControlPlaneRouterAdapter(options = {}) {
       return ROUTES.map((route) => ({ ...route }));
     }
   };
+}
+
+function trustedActorHeaders(actor = {}) {
+  const headers = {};
+  const actorId = actor.actorId ?? actor.id;
+  const actorType = actor.actorType ?? actor.type;
+
+  if (actorId) {
+    headers["x-actor-id"] = actorId;
+  }
+
+  if (actorType) {
+    headers["x-actor-type"] = actorType;
+  }
+
+  return headers;
 }
 
 function pathFrom(request) {

@@ -4,7 +4,7 @@ M2 starts from executable room, invite, approval, permission, TTL, and privacy c
 
 The `src/http/` boundary exposes HTTP-shaped handler functions over the simulation without opening sockets. It fixes API request/response DTOs for host room and invite creation, friend invite lookup and join requests, host approval, and service session issuance while keeping raw invite tokens, session ids, and host internals out of responses.
 
-`src/http/router-adapter.mjs` is still a dependency-free contract/test adapter. Do not mount it as a production route surface with client-supplied `x-actor-id` or `x-actor-type` headers.
+`src/http/router-adapter.mjs` is still a dependency-free contract/test adapter. Its `inject()` helper may be used by tests, but `register()` now requires `deriveActor(request)` and forwards only trusted actor headers to the boundary. Do not mount any control-plane route surface that accepts client-supplied `x-actor-id` or `x-actor-type` headers.
 
 `src/http/fastify-app.mjs` is the real Fastify entry point. It requires `createControlPlaneFastifyApp({ deriveActor })`, where `deriveActor(request)` must come from trusted middleware or service authentication. Client-supplied actor headers are ignored before the request reaches the boundary.
 

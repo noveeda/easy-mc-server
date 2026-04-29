@@ -24,10 +24,12 @@ Open `index.html?state=approvalTimeout` to review a state directly. Do not add v
 
 Safety and accessibility contract:
 
-- `index.html` keeps `robots=noindex,nofollow`; deployment should also send `X-Robots-Tag: noindex, nofollow`.
+- `index.html` keeps `robots=noindex,nofollow`; deployment must also send `X-Robots-Tag: noindex, nofollow` before closed-alpha links are shared.
 - Unavailable states hide room alias, Minecraft version, and pack profile name.
 - Valid state may show only safe metadata: room alias, Minecraft version, pack profile name, and trust copy.
 - Actions are keyboard-focusable links with button styling and visible focus.
 - Mobile layout keeps actions full-width and avoids text overflow.
 - Public copy must include the unofficial-product wording for Minecraft, Mojang, and Microsoft.
 - The trust panel states that generated packs preserve original mod download URLs and pinned hashes; third-party mod files are not rehosted by this helper.
+
+Release checks live in [closed-alpha-release-checklist.md](../../docs/operations/closed-alpha-release-checklist.md).

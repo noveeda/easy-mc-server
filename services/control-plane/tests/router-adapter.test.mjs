@@ -161,7 +161,14 @@ test("router adapter accepts Fastify-like payloads without changing DTO shape", 
 
 test("router adapter can register routes on a minimal Fastify-like app", async () => {
   const registered = [];
-  const adapter = createControlPlaneRouterAdapter({ boundary: createBoundary() });
+  const adapter = createControlPlaneRouterAdapter({
+    boundary: createBoundary(),
+    deriveActor(request) {
+      return request.url === "/service/sessions"
+        ? { actorType: "service" }
+        : { actorId: HOST_ID };
+    }
+  });
   const app = {
     route(route) {
       registered.push(route);
@@ -175,7 +182,7 @@ test("router adapter can register routes on a minimal Fastify-like app", async (
     method: "POST",
     url: "/host/rooms",
     headers: {
-      "x-actor-id": HOST_ID
+      "x-actor-id": "spoofed-host"
     },
     body: {
       alias: "Cozy Room",
@@ -186,6 +193,26 @@ test("router adapter can register routes on a minimal Fastify-like app", async (
 
   assert.equal(firstRouteResponse.status, 201);
   assertNoSensitiveFields(firstRouteResponse.body);
+
+  const inviteRouteResponse = await registered[1].handler({
+    method: "POST",
+    url: `/host/rooms/${firstRouteResponse.body.room.id}/invites`,
+    headers: {
+      "x-actor-id": "spoofed-host"
+    }
+  });
+
+  assert.equal(inviteRouteResponse.status, 201);
+  assertNoSensitiveFields(inviteRouteResponse.body);
+});
+
+test("router adapter register requires trusted actor derivation before mounting", () => {
+  const adapter = createControlPlaneRouterAdapter({ boundary: createBoundary() });
+  const app = {
+    route() {}
+  };
+
+  assert.throws(() => adapter.register(app), /requires deriveActor/);
 });
 
 function normalizeDtos(value) {

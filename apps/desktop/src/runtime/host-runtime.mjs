@@ -83,6 +83,10 @@ export function createHostRuntimePlan(input = {}) {
     return loader;
   }
 
+  if (!isSafeFileName(loader.loader.launcherJar)) {
+    return fail(HostRuntimeFailureReasons.CACHE_LAYOUT_INVALID);
+  }
+
   const layout = createAppDataLayout(input.room);
   const java = createWindowsJavaDetectionPlan(input.java);
   const mods = createModInstallPlan(input.pack, layout);
@@ -186,6 +190,11 @@ export function resolveFabricLoader(input = {}) {
     return fail(HostRuntimeFailureReasons.LOADER_UNAVAILABLE);
   }
 
+  const launcherJar = loader.launcherJar ?? `fabric-server-${input.minecraftVersion}-${loader.version}.jar`;
+  if (!isSafeFileName(launcherJar)) {
+    return fail(HostRuntimeFailureReasons.CACHE_LAYOUT_INVALID);
+  }
+
   return {
     ok: true,
     loader: {
@@ -193,13 +202,17 @@ export function resolveFabricLoader(input = {}) {
       version: loader.version,
       installerSha256: loader.installerSha256,
       serverJarSha256: loader.serverJarSha256,
-      launcherJar: loader.launcherJar ?? `fabric-server-${input.minecraftVersion}-${loader.version}.jar`
+      launcherJar
     }
   };
 }
 
 export function createAppDataLayout(room = {}) {
   const appDataRoot = room.appDataRoot ?? room.dataRoot;
+  if (!isSafeAppDataRoot(appDataRoot) || !isSafePathSegment(room.id)) {
+    throw new TypeError("room layout requires a safe appDataRoot and room id");
+  }
+
   const roomRoot = joinPath(appDataRoot, "rooms", room.id);
 
   return {
@@ -519,6 +532,14 @@ function validateHostRuntime(input) {
     return HostRuntimeFailureReasons.CACHE_LAYOUT_INVALID;
   }
 
+  if (!isSafeAppDataRoot(input.room.appDataRoot ?? input.room.dataRoot) || !isSafePathSegment(input.room.id)) {
+    return HostRuntimeFailureReasons.CACHE_LAYOUT_INVALID;
+  }
+
+  if ((input.pack?.mods ?? []).some((mod) => !isSafeFileName(mod.fileName))) {
+    return HostRuntimeFailureReasons.CACHE_LAYOUT_INVALID;
+  }
+
   return null;
 }
 
@@ -538,6 +559,32 @@ function fail(reason) {
 
 function normalizePath(path) {
   return joinPath(path);
+}
+
+function isSafeAppDataRoot(path) {
+  return typeof path === "string" && path.trim().length > 0 && !path.includes("\0") && !hasParentPathSegment(path);
+}
+
+function isSafeFileName(value) {
+  return isSafePathSegment(value) && String(value).endsWith(".jar");
+}
+
+function isSafePathSegment(value) {
+  return typeof value === "string"
+    && value.length > 0
+    && value !== "."
+    && value !== ".."
+    && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(value)
+    && !value.includes("/")
+    && !value.includes("\\")
+    && !value.includes(":");
+}
+
+function hasParentPathSegment(path) {
+  return String(path)
+    .replaceAll("\\", "/")
+    .split("/")
+    .some((segment) => segment === "..");
 }
 
 function joinPath(...parts) {

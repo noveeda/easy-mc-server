@@ -251,6 +251,33 @@ function validateRuntimePlan(runtimePlan) {
     return LocalRuntimeAdapterFailureReasons.INVALID_RUNTIME_PLAN;
   }
 
+  const appDataRoot = runtimePlan.layout.appDataRoot;
+  const managedPaths = [
+    runtimePlan.files.root,
+    runtimePlan.files.mods,
+    runtimePlan.files.world,
+    runtimePlan.layout.runtime,
+    runtimePlan.layout.logs,
+    runtimePlan.layout.cache,
+    runtimePlan.layout.downloads,
+    runtimePlan.layout.metadata,
+    runtimePlan.fabric.launcherJar,
+    runtimePlan.eula.path,
+    runtimePlan.serverProperties.path,
+    ...(runtimePlan.mods?.entries ?? []).map((entry) => entry.target)
+  ];
+  const modSources = (runtimePlan.mods?.entries ?? [])
+    .map((entry) => entry.source)
+    .filter((source) => typeof source === "string" && isPathLike(source));
+
+  if (
+    !isSafeRoot(appDataRoot)
+    || managedPaths.some((path) => !isManagedPath(appDataRoot, path))
+    || modSources.some((path) => !isManagedPath(appDataRoot, path))
+  ) {
+    return LocalRuntimeAdapterFailureReasons.INVALID_RUNTIME_PLAN;
+  }
+
   return null;
 }
 
@@ -270,6 +297,35 @@ function serializeJson(value) {
 
 function uniquePaths(paths) {
   return [...new Set(paths.filter(Boolean))];
+}
+
+function isSafeRoot(path) {
+  return typeof path === "string" && path.trim().length > 0 && !path.includes("\0") && !hasParentPathSegment(path);
+}
+
+function isManagedPath(root, path) {
+  if (typeof path !== "string" || path.trim().length === 0 || path.includes("\0") || hasParentPathSegment(path)) {
+    return false;
+  }
+
+  const normalizedRoot = normalizePath(root);
+  const normalizedPath = normalizePath(path);
+  return normalizedPath === normalizedRoot || normalizedPath.startsWith(`${normalizedRoot}/`);
+}
+
+function isPathLike(value) {
+  return value.includes("/") || value.includes("\\") || /^[A-Za-z]:/.test(value);
+}
+
+function hasParentPathSegment(path) {
+  return String(path)
+    .replaceAll("\\", "/")
+    .split("/")
+    .some((segment) => segment === "..");
+}
+
+function normalizePath(path) {
+  return joinPath(path);
 }
 
 function joinPath(...parts) {

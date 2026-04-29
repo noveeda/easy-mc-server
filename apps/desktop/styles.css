@@ -169,6 +169,13 @@ h2 {
   border-color: var(--accent);
 }
 
+.desktop-notice {
+  max-width: 720px;
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
 .pill.is-muted {
   color: var(--muted);
   background: #f7f8f6;

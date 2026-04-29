@@ -47,6 +47,11 @@ export const InviteDiscoveryPolicy = Object.freeze({
   exposeRoomDetailsForUnavailableStates: false
 });
 
+export const InviteAccessibilityDefaults = Object.freeze({
+  minInteractiveTargetPx: 44,
+  mobileMaxWidthPx: 520
+});
+
 export const SupportBundleContract = Object.freeze({
   include: [
     "appVersion",
@@ -78,6 +83,29 @@ const REDACTED = "[REDACTED]";
 const REDACTED_IP = "[REDACTED_IP]";
 const REDACTED_INVITE_URL = "[REDACTED_INVITE_URL]";
 const REDACTED_CREDENTIAL = "[REDACTED_CREDENTIAL]";
+
+const normalizedSensitiveKeys = new Set([
+  "accesstoken",
+  "authorization",
+  "authtoken",
+  "cookie",
+  "credential",
+  "devicesignal",
+  "ip",
+  "ipaddress",
+  "inviteurl",
+  "invitetoken",
+  "minecraftaccesstoken",
+  "password",
+  "rawtoken",
+  "refreshtoken",
+  "secret",
+  "sessioncredential",
+  "sessionid",
+  "sessionkey",
+  "sessiontoken",
+  "token"
+]);
 
 const inviteRecoveryCopy = Object.freeze({
   [InviteRecoveryStates.ACTIVE]: {
@@ -172,7 +200,7 @@ const auditRequirements = Object.freeze({
   [AuditEventTypes.APPROVAL_DECISION]: ["roomId", "actorId", "requestId", "decision"],
   [AuditEventTypes.JOIN_RATE_LIMITED]: ["roomId", "inviteId", "limitKey", "reason"],
   [AuditEventTypes.USER_BLOCKED]: ["roomId", "actorId", "minecraftUuid", "reason"],
-  [AuditEventTypes.RELAY_USAGE]: ["roomId", "sessionId", "byteCount"]
+  [AuditEventTypes.RELAY_USAGE]: ["roomId", "sessionIdHash", "byteCount"]
 });
 
 const sensitiveKeyPattern = /(^|_)(accessToken|authorization|cookie|credential|deviceSignal|ip|ipAddress|inviteToken|minecraftAccessToken|password|refreshToken|secret|sessionCredential|sessionKey|sessionToken|token)(_|$)/i;
@@ -206,6 +234,115 @@ export function describeSupportBundleContract() {
 
 export function getRetentionDefaults() {
   return structuredCloneFallback(RetentionDefaults);
+}
+
+export function validateInviteAccessibilitySnapshot(snapshot = {}) {
+  const failures = [];
+  const actions = Array.isArray(snapshot.actions) ? snapshot.actions : [];
+
+  if (snapshot.hasViewportMeta !== true) {
+    failures.push("viewport_meta_missing");
+  }
+
+  if (snapshot.hasVisibleFocusStyle !== true) {
+    failures.push("visible_focus_style_missing");
+  }
+
+  if (snapshot.mobileBreakpointPx !== undefined && snapshot.mobileBreakpointPx > InviteAccessibilityDefaults.mobileMaxWidthPx) {
+    failures.push("mobile_breakpoint_too_wide");
+  }
+
+  if (snapshot.mobileActionsFullWidth !== true) {
+    failures.push("mobile_actions_not_full_width");
+  }
+
+  if (snapshot.textWraps !== true) {
+    failures.push("text_overflow_risk");
+  }
+
+  if (actions.length === 0) {
+    failures.push("actions_missing");
+  }
+
+  for (const action of actions) {
+    if (!action?.accessibleName) {
+      failures.push("action_accessible_name_missing");
+    }
+
+    if (action?.keyboardFocusable !== true) {
+      failures.push("action_keyboard_focus_missing");
+    }
+
+    if (!Number.isFinite(action?.minHeightPx) || action.minHeightPx < InviteAccessibilityDefaults.minInteractiveTargetPx) {
+      failures.push("action_target_too_small");
+    }
+  }
+
+  return {
+    ok: failures.length === 0,
+    failures: [...new Set(failures)],
+    checkedActions: actions.length
+  };
+}
+
+export function evaluateClosedAlphaReleaseGate(input = {}) {
+  const failures = [];
+  const discovery = input.discovery ?? {};
+  const surfaces = input.surfaces ?? {};
+
+  if (discovery.robots !== InviteDiscoveryPolicy.robots) {
+    failures.push("invite_robots_missing");
+  }
+
+  if (discovery.xRobotsTag !== InviteDiscoveryPolicy.robots) {
+    failures.push("invite_x_robots_tag_missing");
+  }
+
+  if (discovery.publicDiscovery !== false) {
+    failures.push("public_discovery_enabled");
+  }
+
+  if (discovery.exposesUnavailableRoomDetails !== false) {
+    failures.push("unavailable_room_details_exposed");
+  }
+
+  if (discovery.sitemapExposesInvites === true || discovery.listingRoute === true || discovery.searchRoute === true) {
+    failures.push("invite_discovery_route_exposed");
+  }
+
+  if (surfaces.invitePage?.includesUnofficialProductWording !== true) {
+    failures.push("invite_unofficial_wording_missing");
+  }
+
+  if (surfaces.desktopApp?.includesUnofficialProductWording !== true) {
+    failures.push("desktop_unofficial_wording_missing");
+  }
+
+  const accessibility = validateInviteAccessibilitySnapshot(input.inviteAccessibility);
+  if (!accessibility.ok) {
+    failures.push("invite_accessibility_contract_failed");
+  }
+
+  if (!input.supportBundleProbe) {
+    failures.push("support_bundle_probe_missing");
+  } else {
+    const redacted = redactSupportBundle(input.supportBundleProbe.bundle);
+    const serialized = JSON.stringify(redacted);
+    const forbidden = input.supportBundleProbe.forbiddenStrings ?? [];
+
+    for (const value of forbidden) {
+      if (value && serialized.includes(value)) {
+        failures.push("support_bundle_unredacted_secret");
+        break;
+      }
+    }
+  }
+
+  return {
+    ok: failures.length === 0,
+    failures: [...new Set(failures)],
+    accessibility
+  };
 }
 
 export function buildAbuseControlAuditEvent(type, payload, options = {}) {
@@ -455,7 +592,8 @@ function findSensitivePaths(value, basePath = "") {
 }
 
 function isSensitiveKey(key) {
-  return sensitiveKeyPattern.test(key);
+  const normalized = String(key ?? "").replace(/[^A-Za-z0-9]/g, "").toLowerCase();
+  return sensitiveKeyPattern.test(key) || normalizedSensitiveKeys.has(normalized) || normalized.endsWith("token");
 }
 
 function isHttpsUrl(value) {
