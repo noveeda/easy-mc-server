@@ -93,6 +93,13 @@
             <div class="primary-actions">
               <button class="primary-button" type="button" id="prepare-room-button">방 준비하기</button>
               <button class="secondary-button" type="button" id="open-room-button" disabled>방 열기</button>
+              <button class="secondary-button" type="button" id="close-room-button" disabled>방 닫기</button>
+              <button class="secondary-button" type="button" id="restart-room-button" disabled>다시 열기</button>
+            </div>
+
+            <div class="blocker" id="room-blocker" hidden>
+              <strong id="blocker-title">방을 열 수 없습니다</strong>
+              <span id="blocker-message">준비가 더 필요합니다.</span>
             </div>
           </section>
 
@@ -131,7 +138,7 @@
                 <p class="eyebrow">Step 3</p>
                 <h2 id="runtime-title">실행 준비</h2>
               </div>
-              <span class="pill">시뮬레이션</span>
+              <span class="pill" id="runtime-pill">미리보기</span>
             </div>
 
             <ul class="runtime-list" id="runtime-rows" aria-label="방 실행 준비 계획"></ul>
@@ -185,6 +192,7 @@
       </main>
     </div>
 
+    <script src="./bridge.js"></script>
     <script src="./state.js"></script>
     <script src="./app.js"></script>
   </body>

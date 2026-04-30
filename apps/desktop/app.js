@@ -1,13 +1,20 @@
 const roomStateModel = window.RoomDesktopState;
+const roomBridge = window.RoomDesktopBridge;
 let roomState = roomStateModel.cloneInitialState();
 
 const roomStatus = document.querySelector("#room-status");
+const runtimePill = document.querySelector("#runtime-pill");
 const roomFilesRow = document.querySelector("#room-files-row");
 const roomFilesTitle = roomFilesRow.querySelector(".readiness-title");
 const roomFilesText = roomFilesRow.querySelector(".readiness-text");
 const prepareRoomButton = document.querySelector("#prepare-room-button");
 const openRoomButton = document.querySelector("#open-room-button");
+const closeRoomButton = document.querySelector("#close-room-button");
+const restartRoomButton = document.querySelector("#restart-room-button");
 const resetButton = document.querySelector("#reset-button");
+const roomBlocker = document.querySelector("#room-blocker");
+const blockerTitle = document.querySelector("#blocker-title");
+const blockerMessage = document.querySelector("#blocker-message");
 const inviteLink = document.querySelector("#invite-link");
 const copyInviteButton = document.querySelector("#copy-invite-button");
 const inviteCopy = document.querySelector("#invite-copy");
@@ -25,7 +32,7 @@ const hostRuntimePreview = Object.freeze({
   eula: "호스트 동의 후 기록",
   properties: "친구 승인 목록 사용",
   mods: ["Fabric API", "Lithium", "FerriteCore", "친구 연결 모드"],
-  lifecycle: "준비 -> 시작 중 -> 열림 -> 닫는 중 -> 닫힘",
+  lifecycle: "준비 -> 여는 중 -> 열림 -> 닫는 중 -> 닫힘",
   logs: "초대 코드와 개인 식별자는 가려서 표시",
   diagnostics: [
     ["Data root", "%APPDATA%/RoomBuilder"],
@@ -42,19 +49,71 @@ function dispatch(action) {
   render();
 }
 
+function getStatusCopy() {
+  const pending = roomState.commandPending;
+  if (pending === "prepare") {
+    return "준비 중";
+  }
+  if (pending === "open") {
+    return "여는 중";
+  }
+  if (pending === "close") {
+    return "닫는 중";
+  }
+  if (pending === "restart") {
+    return "다시 여는 중";
+  }
+
+  switch (roomState.bridgeStatus) {
+    case "ready":
+      return "준비 완료";
+    case "running":
+    case "open":
+      return "방 열림";
+    case "preview-open":
+      return "미리보기 열림";
+    case "closing":
+      return "닫는 중";
+    case "blocked":
+      return "열기 막힘";
+    default:
+      return "준비 전";
+  }
+}
+
 function renderRoomReadiness() {
   roomFilesRow.classList.toggle("is-ready", roomState.prepared);
+  roomFilesRow.classList.toggle("is-blocked", roomState.bridgeStatus === "blocked");
   roomFilesTitle.textContent = roomState.prepared ? "방 파일 준비됨" : "방 파일 준비 전";
   roomFilesText.textContent = roomState.prepared
-    ? "이제 방을 열 수 있습니다."
+    ? roomState.blocker?.message ?? "이제 방을 열 수 있습니다."
     : "아래 버튼을 누르면 필요한 파일을 준비합니다.";
 }
 
 function renderRoomStatus() {
-  roomStatus.textContent = roomState.open ? "방 열림" : roomState.prepared ? "준비 완료" : "준비 전";
+  const hasPendingCommand = Boolean(roomState.commandPending);
+  const canOpen = roomState.prepared && !roomState.open && roomState.bridgeStatus !== "closing";
+  const canClose = roomState.open || roomState.bridgeStatus === "blocked";
+  const canRestart = roomState.open || roomState.bridgeStatus === "blocked";
+
+  roomStatus.textContent = getStatusCopy();
   roomStatus.classList.toggle("is-open", roomState.open);
-  prepareRoomButton.disabled = roomState.prepared;
-  openRoomButton.disabled = !roomState.prepared || roomState.open;
+  roomStatus.classList.toggle("is-blocked", roomState.bridgeStatus === "blocked");
+  runtimePill.textContent = roomState.previewOpen ? "미리보기" : roomState.open ? "열림" : roomState.bridgeStatus === "blocked" ? "차단됨" : "대기";
+  runtimePill.classList.toggle("is-warning", roomState.bridgeStatus === "blocked");
+  runtimePill.classList.toggle("is-running", roomState.open);
+
+  prepareRoomButton.disabled = hasPendingCommand || roomState.prepared;
+  openRoomButton.disabled = hasPendingCommand || !canOpen;
+  closeRoomButton.disabled = hasPendingCommand || !canClose;
+  restartRoomButton.disabled = hasPendingCommand || !canRestart;
+  resetButton.disabled = hasPendingCommand;
+
+  roomBlocker.hidden = !roomState.blocker;
+  if (roomState.blocker) {
+    blockerTitle.textContent = roomState.blocker.title;
+    blockerMessage.textContent = roomState.blocker.message;
+  }
 }
 
 function renderInvite() {
@@ -92,50 +151,43 @@ function renderRequest() {
       : "요청을 거절했습니다. 친구가 다시 요청할 수 있습니다.";
 }
 
-function renderRuntimePreview() {
-  runtimeRows.innerHTML = `
-    <li>
-      <strong>방 폴더</strong>
-      <span>${hostRuntimePreview.roomFolder}</span>
-    </li>
-    <li>
-      <strong>실행 환경</strong>
-      <span>${hostRuntimePreview.java} · ${hostRuntimePreview.minecraftVersion}</span>
-    </li>
-    <li>
-      <strong>로더</strong>
-      <span>${hostRuntimePreview.fabricLoader}</span>
-    </li>
-    <li>
-      <strong>준비 방식</strong>
-      <span>${hostRuntimePreview.cache} · ${hostRuntimePreview.eula}</span>
-    </li>
-    <li>
-      <strong>방 규칙</strong>
-      <span>${hostRuntimePreview.properties}</span>
-    </li>
-    <li>
-      <strong>적용 파일</strong>
-      <span>${hostRuntimePreview.mods.join(", ")}</span>
-    </li>
-    <li>
-      <strong>열고 닫기</strong>
-      <span>${hostRuntimePreview.lifecycle}</span>
-    </li>
-    <li>
-      <strong>기록</strong>
-      <span>${hostRuntimePreview.logs}</span>
-    </li>
-  `;
+function replaceDetailRows(list, rows) {
+  const items = rows.map((row) => {
+    const item = document.createElement("li");
+    const label = document.createElement("strong");
+    const value = document.createElement("span");
 
-  diagnosticsRows.innerHTML = hostRuntimePreview.diagnostics
-    .map(([label, value]) => `
-      <li>
-        <strong>${label}</strong>
-        <span>${value}</span>
-      </li>
-    `)
-    .join("");
+    label.textContent = row.label;
+    value.textContent = row.value;
+    item.append(label, value);
+
+    return item;
+  });
+
+  list.replaceChildren(...items);
+}
+
+function renderRuntimePreview() {
+  const runtimeRowsToRender = roomState.runtimeRows.length
+    ? roomState.runtimeRows
+    : [
+        { label: "방 폴더", value: hostRuntimePreview.roomFolder },
+        { label: "실행 환경", value: `${hostRuntimePreview.java} · ${hostRuntimePreview.minecraftVersion}` },
+        { label: "로더", value: hostRuntimePreview.fabricLoader },
+        { label: "준비 방식", value: `${hostRuntimePreview.cache} · ${hostRuntimePreview.eula}` },
+        { label: "방 규칙", value: hostRuntimePreview.properties },
+        { label: "적용 파일", value: hostRuntimePreview.mods.join(", ") },
+        { label: "열고 닫기", value: hostRuntimePreview.lifecycle },
+        { label: "기록", value: hostRuntimePreview.logs }
+      ];
+
+  replaceDetailRows(runtimeRows, runtimeRowsToRender);
+
+  const diagnosticsToRender = roomState.diagnostics.length
+    ? roomState.diagnostics
+    : hostRuntimePreview.diagnostics.map(([label, value]) => ({ label, value }));
+
+  replaceDetailRows(diagnosticsRows, diagnosticsToRender);
 }
 
 function render() {
@@ -162,9 +214,54 @@ async function copyInvite() {
   }
 }
 
-prepareRoomButton.addEventListener("click", () => dispatch({ type: "prepare" }));
-openRoomButton.addEventListener("click", () => dispatch({ type: "open" }));
-resetButton.addEventListener("click", () => dispatch({ type: "reset" }));
+async function runBridgeCommand(command, status, task) {
+  dispatch({ type: "bridge:pending", command, status });
+
+  try {
+    const result = await task();
+    dispatch({ type: "bridge:result", result });
+  } catch (error) {
+    dispatch({
+      type: "bridge:error",
+      message: "요청을 처리하지 못했습니다.",
+      diagnostics: [["Bridge error", error?.name ?? "Error"]]
+    });
+  }
+}
+
+prepareRoomButton.addEventListener("click", () => {
+  runBridgeCommand("prepare", "preparing", () => roomBridge.prepareRoom({
+    minecraftVersion: document.querySelector("#version-select").value,
+    pack: document.querySelector("#pack-select").value
+  }));
+});
+
+openRoomButton.addEventListener("click", () => {
+  runBridgeCommand("open", "opening", () => roomBridge.openRoom({
+    minecraftVersion: document.querySelector("#version-select").value,
+    pack: document.querySelector("#pack-select").value
+  }));
+});
+
+closeRoomButton.addEventListener("click", () => {
+  runBridgeCommand("close", "closing", () => roomBridge.closeRoom());
+});
+
+restartRoomButton.addEventListener("click", () => {
+  runBridgeCommand("restart", "opening", () => roomBridge.restartRoom({
+    minecraftVersion: document.querySelector("#version-select").value,
+    pack: document.querySelector("#pack-select").value
+  }));
+});
+
+resetButton.addEventListener("click", async () => {
+  dispatch({ type: "reset" });
+  try {
+    await roomBridge.resetRoom();
+  } catch {
+    // Static reset must stay usable even when a future bridge is unavailable.
+  }
+});
 copyInviteButton.addEventListener("click", copyInvite);
 
 render();

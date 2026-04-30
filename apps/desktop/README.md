@@ -9,8 +9,8 @@ Open `index.html` directly in a browser to review the host flow. `state.js` cont
 1. Select the fixed supported Minecraft version.
 2. Prepare the room.
 3. Review the simulated room runtime plan.
-4. Open the room.
-5. Copy the generated invite.
+4. Try to open the room and confirm the static preview shows the desktop-runtime blocker.
+5. Confirm invite copy stays disabled until a real desktop runtime reports an open room.
 6. Approve or deny the sample friend request.
 
 ## Product Boundary
@@ -21,7 +21,7 @@ Default UI should keep using room language and avoid explaining ports, firewall 
 
 ## M3 Host Runtime Contract
 
-`src/runtime/host-runtime.mjs` is the executable M3 contract for later Tauri and Minecraft adapters. `src/runtime/local-runtime-adapter.mjs` turns that validated room plan into concrete file materialization, Fabric download, and local process intents. `src/runtime/node-java-detection.mjs`, `src/runtime/node-fabric-bootstrap.mjs`, and `src/runtime/node-local-runtime.mjs` are the Node-side adapter layer for Java detection, checksum-gated Fabric server installation, local file materialization, and process lifecycle management. `src/tunnel/host-tunnel.mjs` adds the M4 host-side room connection intent for the later relay adapter.
+`src/runtime/host-runtime.mjs` is the executable M3 contract for later Tauri and Minecraft adapters. `src/runtime/local-runtime-adapter.mjs` turns that validated room plan into concrete file materialization, Fabric download, and local process intents. `src/runtime/node-java-detection.mjs`, `src/runtime/node-fabric-bootstrap.mjs`, and `src/runtime/node-local-runtime.mjs` are the Node-side adapter layer for Java detection, checksum-gated Fabric server installation, local file materialization, and process lifecycle management. `src/runtime/desktop-runtime-bridge.mjs` composes those adapters into prepare/open/close/restart/status DTOs for the future Tauri command boundary. `bridge.js` lets the static browser prototype call future Tauri commands while using a safe blocked fallback under `file://`. `src/tunnel/host-tunnel.mjs` adds the M4 host-side room connection intent for the later relay adapter.
 
 The contract covers:
 
@@ -39,6 +39,7 @@ The contract covers:
 12. Tauri process intents for start, stop, and restart.
 13. Host tunnel intent that binds the active room to `127.0.0.1:25565`, closes when the local room stops, and shows room-language connection/quota states.
 14. Node runtime adapters for Java 21 detection, approved Fabric Meta download, pinned SHA256 verification, process start/stop/restart, ready/crash log detection, timeout kill fallback, and redacted log events.
+15. Desktop runtime bridge DTOs for prepare/open/close/restart/status and static GUI fallback states that do not fake a real room launch.
 
 Failures return room-language messages that the desktop UI can show directly. Bridge approval events must use the server-observed Minecraft UUID; a claimed identity from the client can be displayed for context but cannot approve or bypass the room queue.
 

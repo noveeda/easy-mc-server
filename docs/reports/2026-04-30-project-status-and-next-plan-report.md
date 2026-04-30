@@ -19,10 +19,10 @@ source_milestones: "../milestones/2026-04-29-local-minecraft-room-milestones.md"
 - 저장소: `https://github.com/noveeda/easy-mc-server.git`
 - 현재 브랜치: `codex/mvp0-decision-lock`
 - 최신 커밋: `git log -1 --oneline`으로 확인
-- 마지막 검증: `npm.cmd run test` 208개 통과, `npm.cmd run mvp0:preview`, `npm.cmd run mvp0:preview -- --real-launch`, `npm.cmd run mvp0:preview -- --real-launch --download-fabric`, `git diff --check`, desktop/invite 정적 화면 browser snapshot 통과
+- 마지막 검증: `npm.cmd run test` 216개 통과, `npm.cmd run mvp0:preview`, `npm.cmd run mvp0:preview -- --real-launch`, `npm.cmd run mvp0:preview -- --real-launch --download-fabric`, `git diff --check`, desktop/invite 정적 화면 browser snapshot 통과
 - 현재 제품 단계: MVP-0를 위한 실행 계약에 더해 로컬 runnable developer preview를 붙이는 단계
 
-현재 M0와 M2는 개발 게이트 기준으로 완료됐다. M3와 M4에는 로컬 파일 생성, dry-run 실행 의도, Java 감지 adapter, Fabric server jar checksum bootstrap adapter, local process lifecycle manager, `.mrpack` blocker 검증, 로컬 TCP relay smoke를 묶는 개발자용 preview 경로가 추가되고 있다. 다만 이것은 MVP-0 완성품이 아니라 runnable developer preview다. 실제 Windows 데스크톱 앱에서 로컬 Fabric 서버를 실행하고 친구가 릴레이로 접속하는 실사용 루프는 아직 완료되지 않았다.
+현재 M0와 M2는 개발 게이트 기준으로 완료됐다. M3와 M4에는 로컬 파일 생성, dry-run 실행 의도, Java 감지 adapter, Fabric server jar checksum bootstrap adapter, local process lifecycle manager, desktop runtime bridge DTO, `.mrpack` blocker 검증, 로컬 TCP relay smoke를 묶는 개발자용 preview 경로가 추가되고 있다. 다만 이것은 MVP-0 완성품이 아니라 runnable developer preview다. 실제 packaged Windows 데스크톱 앱에서 로컬 Fabric 서버를 실행하고 친구가 릴레이로 접속하는 실사용 루프는 아직 완료되지 않았다.
 
 사용 가이드:
 
@@ -133,17 +133,19 @@ npm.cmd run mvp0:preview
 - Node 기반 local runtime adapter가 preview room 파일을 실제 파일시스템에 생성하고 dry-run process intent를 반환한다.
 - Node Fabric bootstrap adapter가 Fabric Meta source에서 받은 server jar를 pinned SHA256과 대조한 뒤에만 cache/runtime jar로 설치한다.
 - Node local lifecycle manager가 fake process 테스트로 start, stop, restart, duplicate start 차단, child process error, ready/crash log, split log chunk, redacted log, timeout kill fallback, hard stop timeout failure를 검증한다.
+- Desktop runtime bridge가 prepare/open/close/restart/status DTO를 제공하고 Java 감지, Fabric bootstrap, materialize, lifecycle adapter를 future Tauri command boundary 형태로 묶는다.
+- Desktop static GUI가 bridge-shaped async command를 호출하며, 파일 미리보기에서는 실제 서버가 열린 척하지 않고 blocker와 diagnostics를 표시한다.
 
 남은 작업:
 
 - 실제 Tauri 데스크톱 앱 shell 구현.
-- 실제 Tauri command에서 Java detection/Fabric bootstrap/process lifecycle adapter 연결.
+- 실제 Tauri command 등록 및 packaged app에서 bridge DTO 연결.
 - 실제 로컬 Fabric 서버 시작 수동 검증.
 
 판단:
 
-- M3는 현재 "실행 계획과 테스트 가능한 계약"을 넘어 Node adapter 수준의 Java 감지, Fabric bootstrap, process lifecycle까지 구현된 단계다.
-- 실제 사용자가 앱에서 방을 열 수 있으려면 Tauri shell wiring과 실제 Windows host-only 서버 시작 검증이 다음 우선순위다.
+- M3는 현재 "실행 계획과 테스트 가능한 계약"을 넘어 Node adapter 수준의 Java 감지, Fabric bootstrap, process lifecycle, desktop bridge DTO까지 구현된 단계다.
+- 실제 사용자가 앱에서 방을 열 수 있으려면 Tauri shell packaging/command registration과 실제 Windows host-only 서버 시작 검증이 다음 우선순위다.
 
 ### M4. 릴레이 기반 친구 접속 End-To-End
 
@@ -256,7 +258,7 @@ npm.cmd run mvp0:preview
 
 | 영역 | 현재 자산 |
 |---|---|
-| Desktop host UI | `apps/desktop` 정적 프로토타입과 runtime 계약 |
+| Desktop host UI | `apps/desktop` 정적 프로토타입, browser bridge fallback, runtime bridge 계약 |
 | Invite helper | `apps/invite-web` 친구 초대 페이지 |
 | Control plane | room/invite/approval/session simulation, HTTP boundary, Fastify wrapper, PostgreSQL 계약 |
 | Relay | relay simulation, quota, replay refusal, open-proxy guard |
@@ -271,12 +273,13 @@ npm.cmd run mvp0:preview
 
 마지막 검증 결과:
 
-- `npm.cmd run test`: 208개 테스트 통과
+- `npm.cmd run test`: 216개 테스트 통과
 - `git diff --check`: 통과
 - `npm.cmd run mvp0:preview`: 통과
 - `npm.cmd run mvp0:preview -- --real-launch`: Java 21 runtime 및 Fabric server jar blocker를 정상 출력
 - `npm.cmd run mvp0:preview -- --real-launch --download-fabric`: Java 21 runtime blocker를 정상 출력
 - `agent-browser` desktop/invite 정적 화면 snapshot: 주요 버튼과 영역 노출 확인
+- `agent-browser` desktop GUI bridge smoke: `방 준비하기` 후 `준비 완료`, `방 열기` 후 `열기 막힘`, 초대 복사 비활성화와 blocker diagnostics 확인
 
 자동 테스트로 검증된 항목:
 
@@ -290,6 +293,8 @@ npm.cmd run mvp0:preview
 - Java detection adapter
 - Fabric bootstrap checksum adapter, timeout, redirect refusal, download size cap, body read failure
 - local process lifecycle manager
+- desktop runtime bridge prepare/open/close/restart/status DTO
+- static desktop bridge fallback blocked-state rendering
 - local path boundary validation
 - client loopback plan
 - host tunnel contract
@@ -321,7 +326,7 @@ npm.cmd run mvp0:preview
 
 ### 7.2 실제 Desktop Runtime 미완성
 
-현재 M3는 runtime contract와 static GUI prototype에 더해 로컬 preview 파일 생성 adapter, Java detection adapter, Fabric bootstrap adapter, process lifecycle manager를 갖춘 상태다. 그러나 제품 앱에서 실제 Fabric 서버를 실행하는 단계는 아직 아니다.
+현재 M3는 runtime contract와 static GUI prototype에 더해 로컬 preview 파일 생성 adapter, Java detection adapter, Fabric bootstrap adapter, process lifecycle manager, desktop runtime bridge DTO를 갖춘 상태다. 그러나 packaged 제품 앱에서 실제 Fabric 서버를 실행하는 단계는 아직 아니다.
 
 영향:
 
@@ -359,6 +364,7 @@ M5의 안전 계약은 준비됐지만 release-complete는 아니다.
 - Tauri desktop shell 구성.
 - 현재 `apps/desktop` UI를 실제 앱 shell에 연결.
 - Java/Fabric/process Node adapter를 Tauri command 또는 sidecar boundary에 연결.
+- 현재 desktop runtime bridge DTO를 Tauri command registration에 매핑.
 - redacted log streaming을 UI에 연결.
 - server bridge approval event를 approval panel에 연결.
 
@@ -461,8 +467,8 @@ M6 curated catalog와 M7 direct P2P는 현재 진행하지 않는 것이 좋다.
 |---|---|---|
 | 제품 방향 | 준비됨 | 로컬 데스크톱 호스트 룸, relay-first MVP-0 |
 | 핵심 계약 | 강함 | M2와 M3-M5 다수 계약이 테스트됨 |
-| 데스크톱 UX | 부분 준비 | 정적 prototype 존재, 실제 Tauri shell 필요 |
-| 로컬 서버 런타임 | 부분 준비 | Node adapter로 Java 감지, Fabric checksum bootstrap, process lifecycle 존재. Tauri wiring과 실제 Windows 수동 실행 필요 |
+| 데스크톱 UX | 부분 준비 | 정적 prototype과 browser bridge fallback 존재, 실제 Tauri shell 필요 |
+| 로컬 서버 런타임 | 부분 준비 | Node adapter와 desktop runtime bridge DTO 존재. Tauri command 등록과 실제 Windows 수동 실행 필요 |
 | 릴레이 경로 | 부분 준비 | simulation과 local TCP preview 존재, 제품 relay stream 필요 |
 | 친구 설치 경로 | 차단됨 | importable `.mrpack` 전 first-party artifact 필요 |
 | 안전 정책 | 계약 준비됨 | release checklist와 safety gate 존재 |
