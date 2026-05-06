@@ -10,8 +10,10 @@ import {
 } from "../src/server-bridge.mjs";
 
 test("Fabric server bridge skeleton declares supported mod metadata", () => {
-  assert.equal(existsSync("mods/server-bridge-fabric/src/main/java/com/easymc/room/server/LocalRoomServerBridgeMod.java"), true);
+  const sourcePath = "mods/server-bridge-fabric/src/main/java/com/easymc/room/server/LocalRoomServerBridgeMod.java";
+  assert.equal(existsSync(sourcePath), true);
 
+  const source = readFileSync(sourcePath, "utf8");
   const metadata = JSON.parse(readFileSync("mods/server-bridge-fabric/src/main/resources/fabric.mod.json", "utf8"));
   assert.deepEqual(
     {
@@ -29,6 +31,8 @@ test("Fabric server bridge skeleton declares supported mod metadata", () => {
       entrypoint: "com.easymc.room.server.LocalRoomServerBridgeMod"
     }
   );
+  assert.match(source, /implements\s+DedicatedServerModInitializer/);
+  assert.match(source, /void\s+onInitializeServer\s*\(\)/);
 });
 
 test("server bridge creates pending approval from server-observed UUID", () => {

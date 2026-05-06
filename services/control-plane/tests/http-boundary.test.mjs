@@ -103,6 +103,28 @@ test("HTTP boundary exposes host invite approval flow with redacted response DTO
   assert.equal(typeof inviteResponse.body.invite.expiresAt, "number");
   assertNoSensitiveFields(inviteResponse.body);
 
+  const heartbeatResponse = await boundary.handle({
+    method: "POST",
+    path: `/host/rooms/${roomResponse.body.room.id}/heartbeat`,
+    headers: {
+      "x-actor-id": HOST_ID
+    }
+  });
+  assert.deepEqual(heartbeatResponse, {
+    status: 200,
+    headers: {
+      "content-type": "application/json"
+    },
+    body: {
+      room: {
+        id: roomResponse.body.room.id,
+        state: "open",
+        hostOnline: true
+      }
+    }
+  });
+  assertNoSensitiveFields(heartbeatResponse.body);
+
   const safeInviteResponse = await boundary.handle({
     method: "GET",
     path: `/friend/invites/${inviteResponse.body.invite.handle}`

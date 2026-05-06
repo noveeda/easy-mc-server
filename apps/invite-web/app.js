@@ -7,6 +7,12 @@ const roomMetadata = {
 };
 
 const states = {
+  checking: {
+    title: "초대 확인 중",
+    summary: "초대 정보를 확인하고 있습니다. 확인이 끝나기 전에는 방 정보를 표시하지 않습니다.",
+    actions: [{ label: "다시 확인", href: "#retry" }],
+    unavailable: true
+  },
   valid: {
     title: "Cozy Performance Room",
     summary: "친구 모드팩을 받은 뒤 Minecraft Java를 열고 호스트 승인을 기다리세요.",
@@ -138,6 +144,32 @@ function normalizeStateName(stateName) {
   return String(stateName ?? "valid").trim().replaceAll(" ", "_").replaceAll("-", "_");
 }
 
+function stateFromSearch(search) {
+  const params = new URLSearchParams(search);
+  const inviteHandle = params.get("invite");
+  const requestedState = normalizeStateName(params.get("state") ?? (inviteHandle ? "checking" : "missing"));
+  const safeState = states[requestedState] ? requestedState : "invalid";
+
+  if (!inviteHandle) {
+    if (stateIsUnavailable(safeState)) {
+      return safeState;
+    }
+    return "missing";
+  }
+
+  if (!stateIsUnavailable(safeState)) {
+    return "checking";
+  }
+
+  return safeState;
+}
+
+function stateIsUnavailable(stateName) {
+  const candidate = states[stateName];
+  const state = typeof candidate === "string" ? states[candidate] : candidate;
+  return Boolean(state?.unavailable);
+}
+
 function createActionLink(action) {
   const link = document.createElement("a");
   link.textContent = action.label;
@@ -147,4 +179,4 @@ function createActionLink(action) {
   return link;
 }
 
-renderState(new URLSearchParams(window.location.search).get("state") ?? "valid");
+renderState(stateFromSearch(window.location.search));

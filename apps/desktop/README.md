@@ -1,10 +1,46 @@
-# Desktop Host Prototype
+# Desktop Host App
 
-This is the desktop-first M3 prototype for the local Minecraft room app. It is intentionally a static Tauri-ready frontend shell, not the final packaged Windows app.
+This is the desktop-first M3 host app for the local Minecraft room project. The static HTML preview is still useful for quick UI review, but the runnable desktop program path is the Tauri shell.
 
 For the current Korean runnable developer preview guide, see `../../docs/usage/mvp0-local-preview.md`.
 
-Open `index.html` directly in a browser to review the host flow. `state.js` contains the prototype state reducer so the flow can be checked without a browser test dependency:
+## Run The Desktop Program
+
+From the repository root on Windows PowerShell:
+
+```powershell
+npm.cmd run desktop:dev
+```
+
+This opens the Tauri desktop window and loads the Korean host GUI through the local hot reload server. When you edit `apps/desktop/index.html`, `styles.css`, `bridge.js`, `state.js`, `app.js`, or `dev-hot-reload.js`, the open desktop window reloads automatically.
+
+Use the plain Cargo-backed launcher only when debugging the hot reload wrapper itself:
+
+```powershell
+npm.cmd run desktop:dev:plain
+```
+
+The renderer calls registered Tauri commands, and the Rust command broker forwards those commands to the long-lived Node runtime command host.
+
+Use these commands for verification:
+
+```powershell
+npm.cmd run desktop:check
+npm.cmd run desktop:smoke
+```
+
+`desktop:check` verifies the Tauri/Rust compile path. `desktop:smoke` verifies the same Node command host used by Tauri can answer multiple runtime command frames without creating a fake invite link.
+
+The current Tauri dev bridge requires Node.js to be available on `PATH`. If the app cannot find Node, set `EASY_MC_NODE_PATH` to the full `node.exe` path before launching:
+
+```powershell
+$env:EASY_MC_NODE_PATH = "C:\Program Files\nodejs\node.exe"
+npm.cmd run desktop:dev
+```
+
+## Static Preview
+
+Open `index.html` directly in a browser only to review the host flow. `state.js` contains the prototype state reducer so the flow can be checked without a browser test dependency:
 
 1. Select the fixed supported Minecraft version.
 2. Prepare the room.
@@ -12,6 +48,8 @@ Open `index.html` directly in a browser to review the host flow. `state.js` cont
 4. Try to open the room and confirm the static preview shows the desktop-runtime blocker.
 5. Confirm invite copy stays disabled until a real desktop runtime reports an open room.
 6. Approve or deny the sample friend request.
+
+The static preview must not create a dummy invite link. A real invite link can appear only after the Tauri shell, local runtime bridge, Java/Fabric server readiness, control-plane invite, and relay/session readiness are all complete.
 
 ## Product Boundary
 

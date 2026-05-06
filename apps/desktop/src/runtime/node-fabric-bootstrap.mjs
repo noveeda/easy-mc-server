@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, rename, rm, writeFile } from "node:fs/promises";
-import { dirname, normalize } from "node:path";
+import { lstat, mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
+import { dirname, isAbsolute, join, normalize, relative } from "node:path";
 import { createFabricServerDownloadPlan } from "./local-runtime-adapter.mjs";
 
 export const NodeFabricBootstrapFailureReasons = Object.freeze({
@@ -35,6 +35,65 @@ export async function bootstrapFabricServer(runtimePlan = {}, options = {}) {
     return fail(NodeFabricBootstrapFailureReasons.INVALID_DOWNLOAD_PLAN, {
       reason: "checksum_required",
       plan: summarizePlan(plan)
+    });
+  }
+
+  const cachePath = toNativePath(plan.cache.path);
+  const launcherJarPath = toNativePath(plan.install.target);
+  const metadataPath = toNativePath(`${runtimePlan.layout.metadata}/fabric-server-bootstrap.json`);
+  const installedAt = options.now instanceof Date ? options.now.toISOString() : new Date().toISOString();
+  const maxBytes = options.maxBytes ?? options.maxDownloadBytes ?? DEFAULT_MAX_DOWNLOAD_BYTES;
+  const boundary = await verifyWriteBoundary(runtimePlan.layout.appDataRoot, [
+    cachePath,
+    launcherJarPath,
+    metadataPath
+  ]);
+  if (!boundary.ok) {
+    return fail(NodeFabricBootstrapFailureReasons.INVALID_DOWNLOAD_PLAN, boundary.detail);
+  }
+
+  let existing;
+  try {
+    existing = {
+      launcher: await readVerifiedArtifact(launcherJarPath, expectedSha256, { maxBytes }),
+      cache: await readVerifiedArtifact(cachePath, expectedSha256, { maxBytes })
+    };
+  } catch (error) {
+    return fail(NodeFabricBootstrapFailureReasons.DOWNLOAD_FAILED, {
+      sourceUrl: plan.source.url,
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
+
+  if (existing.launcher.ok) {
+    await installFabricArtifact({
+      bytes: existing.launcher.bytes,
+      plan,
+      cachePath,
+      launcherJarPath,
+      metadataPath,
+      installedAt,
+      actualSha256: expectedSha256
+    });
+    return bootstrapResult(plan, runtimePlan, expectedSha256, {
+      reused: true,
+      artifactSource: "launcher"
+    });
+  }
+
+  if (existing.cache.ok) {
+    await installFabricArtifact({
+      bytes: existing.cache.bytes,
+      plan,
+      cachePath,
+      launcherJarPath,
+      metadataPath,
+      installedAt,
+      actualSha256: expectedSha256
+    });
+    return bootstrapResult(plan, runtimePlan, expectedSha256, {
+      reused: true,
+      artifactSource: "cache"
     });
   }
 
@@ -78,9 +137,7 @@ export async function bootstrapFabricServer(runtimePlan = {}, options = {}) {
 
   let bytes;
   try {
-    bytes = await responseBytes(response, {
-      maxBytes: options.maxBytes ?? options.maxDownloadBytes ?? DEFAULT_MAX_DOWNLOAD_BYTES
-    });
+    bytes = await responseBytes(response, { maxBytes });
   } catch (error) {
     return fail(NodeFabricBootstrapFailureReasons.DOWNLOAD_FAILED, {
       sourceUrl: plan.source.url,
@@ -98,35 +155,20 @@ export async function bootstrapFabricServer(runtimePlan = {}, options = {}) {
     });
   }
 
-  const cachePath = toNativePath(plan.cache.path);
-  const launcherJarPath = toNativePath(plan.install.target);
-  const metadataPath = toNativePath(`${runtimePlan.layout.metadata}/fabric-server-bootstrap.json`);
-  const installedAt = options.now instanceof Date ? options.now.toISOString() : new Date().toISOString();
+  await installFabricArtifact({
+    bytes,
+    plan,
+    cachePath,
+    launcherJarPath,
+    metadataPath,
+    installedAt,
+    actualSha256
+  });
 
-  await mkdir(dirname(cachePath), { recursive: true });
-  await mkdir(dirname(launcherJarPath), { recursive: true });
-  await mkdir(dirname(metadataPath), { recursive: true });
-  await writeFileAtomic(cachePath, bytes);
-  await writeFileAtomic(launcherJarPath, bytes);
-  await writeFileAtomic(metadataPath, serializeJson({
-    roomId: plan.roomId,
-    provider: plan.source.provider,
-    sourceUrl: plan.source.url,
-    cachePath: plan.cache.path,
-    launcherJar: plan.install.target,
-    sha256: actualSha256,
-    installedAt
-  }));
-
-  return {
-    ok: true,
-    roomId: plan.roomId,
-    sourceUrl: plan.source.url,
-    cachePath: plan.cache.path,
-    launcherJar: plan.install.target,
-    metadataPath: `${runtimePlan.layout.metadata}/fabric-server-bootstrap.json`,
-    sha256: actualSha256
-  };
+  return bootstrapResult(plan, runtimePlan, actualSha256, {
+    reused: false,
+    artifactSource: "download"
+  });
 }
 
 async function fetchWithTimeout(fetchImpl, url, init, options = {}) {
@@ -195,6 +237,63 @@ async function responseBytes(response, { maxBytes = DEFAULT_MAX_DOWNLOAD_BYTES }
   throw new TypeError("fetch response must expose arrayBuffer() or bytes()");
 }
 
+async function readVerifiedArtifact(path, expectedSha256, { maxBytes = DEFAULT_MAX_DOWNLOAD_BYTES } = {}) {
+  try {
+    const stat = await lstat(path);
+    if (!stat.isFile() || stat.size > maxBytes) {
+      return {
+        ok: false,
+        bytes: null
+      };
+    }
+
+    const bytes = await readFile(path);
+    return {
+      ok: sha256(bytes) === expectedSha256,
+      bytes: ensureMaxBytes(bytes, maxBytes)
+    };
+  } catch (error) {
+    if (error?.code === "ENOENT" || error?.code === "ENOTDIR") {
+      return {
+        ok: false,
+        bytes: null
+      };
+    }
+
+    throw error;
+  }
+}
+
+async function installFabricArtifact({ bytes, plan, cachePath, launcherJarPath, metadataPath, installedAt, actualSha256 }) {
+  await mkdir(dirname(cachePath), { recursive: true });
+  await mkdir(dirname(launcherJarPath), { recursive: true });
+  await mkdir(dirname(metadataPath), { recursive: true });
+  await writeFileAtomic(cachePath, bytes);
+  await writeFileAtomic(launcherJarPath, bytes);
+  await writeFileAtomic(metadataPath, serializeJson({
+    roomId: plan.roomId,
+    provider: plan.source.provider,
+    sourceUrl: plan.source.url,
+    cachePath: plan.cache.path,
+    launcherJar: plan.install.target,
+    sha256: actualSha256,
+    installedAt
+  }));
+}
+
+function bootstrapResult(plan, runtimePlan, actualSha256, detail = {}) {
+  return {
+    ok: true,
+    roomId: plan.roomId,
+    sourceUrl: plan.source.url,
+    cachePath: plan.cache.path,
+    launcherJar: plan.install.target,
+    metadataPath: `${runtimePlan.layout.metadata}/fabric-server-bootstrap.json`,
+    sha256: actualSha256,
+    ...detail
+  };
+}
+
 function ensureMaxBytes(bytes, maxBytes) {
   if (bytes.byteLength > maxBytes) {
     throw new Error(`download exceeds maximum size (${bytes.byteLength} > ${maxBytes})`);
@@ -209,6 +308,97 @@ function sha256(bytes) {
 
 function isSha256(value) {
   return /^[a-f0-9]{64}$/i.test(value ?? "");
+}
+
+async function verifyWriteBoundary(root, paths) {
+  if (!root) {
+    return { ok: true };
+  }
+
+  const rootPath = toNativePath(root);
+  const rootStat = await safeLstat(rootPath);
+  const rootReal = await safeRealpath(rootPath);
+  if (!rootStat || rootStat.isSymbolicLink() || !rootReal) {
+    return {
+      ok: false,
+      detail: { reason: "unsafe_app_data_root" }
+    };
+  }
+
+  for (const path of paths) {
+    const relation = relative(rootPath, path);
+    if (relation.startsWith("..") || isAbsolute(relation)) {
+      return {
+        ok: false,
+        detail: { reason: "path_outside_app_data_root" }
+      };
+    }
+
+    const symlink = await findExistingSymlinkSegment(rootPath, path);
+    if (symlink) {
+      return {
+        ok: false,
+        detail: { reason: "managed_path_reparse_point" }
+      };
+    }
+
+    const parentReal = await safeRealpath(await nearestExistingPath(dirname(path)));
+    if (!parentReal || !isSubPath(rootReal, parentReal)) {
+      return {
+        ok: false,
+        detail: { reason: "managed_path_escape" }
+      };
+    }
+  }
+
+  return { ok: true };
+}
+
+async function findExistingSymlinkSegment(rootPath, targetPath) {
+  const segments = relative(rootPath, targetPath).split(/[\\/]+/).filter(Boolean);
+  let current = rootPath;
+  for (const segment of segments) {
+    current = join(current, segment);
+    const stat = await safeLstat(current);
+    if (stat?.isSymbolicLink()) {
+      return current;
+    }
+  }
+
+  return null;
+}
+
+async function nearestExistingPath(path) {
+  let current = path;
+  while (current && current !== dirname(current)) {
+    if (await safeLstat(current)) {
+      return current;
+    }
+    current = dirname(current);
+  }
+
+  return current;
+}
+
+async function safeLstat(path) {
+  try {
+    return await lstat(path);
+  } catch {
+    return null;
+  }
+}
+
+async function safeRealpath(path) {
+  try {
+    return await realpath(path);
+  } catch {
+    return null;
+  }
+}
+
+function isSubPath(root, path) {
+  const relation = relative(root, path);
+  return relation === "" || (!relation.startsWith("..") && !isAbsolute(relation));
 }
 
 function summarizePlan(plan) {

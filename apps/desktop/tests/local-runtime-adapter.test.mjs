@@ -193,7 +193,7 @@ test("local process intent describes start, stop, and restart without spawning J
     },
     healthCheck: {
       readyLogPattern: "Done",
-      crashLogPattern: "crash|exception|failed",
+      crashLogPattern: "\\bERROR\\b|\\bException\\b|\\bFailed\\b|Crash report|crashed|Caused by:",
       bridgeHealthEvent: "bridge.health"
     },
     requires: [
@@ -206,9 +206,9 @@ test("local process intent describes start, stop, and restart without spawning J
     diagnostics: {
       adapter: "tauri-process",
       redactedCommand: [
-        "C:/Program Files/Eclipse Adoptium/jdk-21/bin/java.exe",
+        "[redacted-path]",
         "-jar",
-        "C:/Users/Alice/AppData/Roaming/RoomBuilder/rooms/room-a/runtime/fabric-server-1.21.1-0.16.10.jar",
+        "[redacted-path]",
         "nogui"
       ]
     }

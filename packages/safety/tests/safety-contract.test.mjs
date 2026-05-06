@@ -78,11 +78,13 @@ test("active invite recovery exposes only safe room metadata", () => {
 
 test("support bundle redacts invite URLs, tokens, IPs, session keys, and credentials", () => {
   const redacted = redactSupportBundle({
+    inviteLink: "https://join.easymc.gg/invite?invite=raw-public-handle",
     inviteToken: "raw-invite-token",
     sessionKey: "session-key-value",
     ipAddress: "203.0.113.10",
     logs: [
       "friend opened https://room.example.test/invite/raw-token?token=abc123 from 198.51.100.23:4222",
+      "friend opened https://join.easymc.gg/invite?invite=raw-public-handle from 198.51.100.24:4222",
       "Authorization: Bearer abc.def.ghi",
       "minecraft access token=msa-secret and password=hunter2"
     ],
@@ -92,13 +94,16 @@ test("support bundle redacts invite URLs, tokens, IPs, session keys, and credent
     }
   });
 
+  assert.equal(redacted.inviteLink, "[REDACTED]");
   assert.equal(redacted.inviteToken, "[REDACTED]");
   assert.equal(redacted.sessionKey, "[REDACTED]");
   assert.equal(redacted.ipAddress, "[REDACTED]");
   assert.match(redacted.logs[0], /\[REDACTED_INVITE_URL\]/);
   assert.doesNotMatch(redacted.logs[0], /raw-token|198\.51\.100\.23/);
-  assert.match(redacted.logs[1], /Bearer \[REDACTED_CREDENTIAL\]/);
-  assert.doesNotMatch(redacted.logs[2], /msa-secret|hunter2/);
+  assert.match(redacted.logs[1], /\[REDACTED_INVITE_URL\]/);
+  assert.doesNotMatch(redacted.logs[1], /raw-public-handle|198\.51\.100\.24/);
+  assert.match(redacted.logs[2], /Bearer \[REDACTED_CREDENTIAL\]/);
+  assert.doesNotMatch(redacted.logs[3], /msa-secret|hunter2/);
   assert.equal(redacted.nested.credential, "[REDACTED]");
   assert.doesNotMatch(redacted.nested.message, /local-room-secret/);
 });

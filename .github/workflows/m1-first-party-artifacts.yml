@@ -1,0 +1,66 @@
+name: M1 First-Party Artifacts
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "GitHub Release tag for the M1 first-party client artifact"
+        required: true
+        default: "m1-first-party-0.1.0-alpha"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish M1 client artifact
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build first-party Fabric jars
+        run: npm run m1:artifacts
+
+      - name: Prepare release assets
+        env:
+          TAG: ${{ inputs.tag }}
+        run: npm run m1:release-assets -- --tag "$TAG"
+
+      - name: Verify release URL remains blocked before upload
+        run: npm run m1:readiness -- --json || true
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release tag already exists. Use a new immutable tag for a new first-party artifact."
+            exit 1
+          fi
+          gh release create "$TAG" dist/m1-release/local-room-client-connection-0.1.0-alpha.jar dist/m1-release/m1-release-manifest.json --prerelease --title "$TAG" --notes "M1 first-party client artifact for private Modrinth pack validation."
+
+      - name: Print readiness command
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          echo "Run locally after the release is visible:"
+          echo "npm.cmd run m1:readiness -- --publish-url mods/local-room-client-connection-0.1.0-alpha.jar=https://github.com/${{ github.repository }}/releases/download/$TAG/local-room-client-connection-0.1.0-alpha.jar"

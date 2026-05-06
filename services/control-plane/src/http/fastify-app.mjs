@@ -3,6 +3,7 @@ import { createControlPlaneHttpBoundary } from "./handlers.mjs";
 
 const ROUTES = Object.freeze([
   Object.freeze({ method: "POST", url: "/host/rooms" }),
+  Object.freeze({ method: "POST", url: "/host/rooms/:roomId/heartbeat" }),
   Object.freeze({ method: "POST", url: "/host/rooms/:roomId/invites" }),
   Object.freeze({ method: "POST", url: "/host/invites/:inviteHandle/revoke" }),
   Object.freeze({ method: "GET", url: "/friend/invites/:inviteHandle" }),

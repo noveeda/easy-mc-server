@@ -420,20 +420,39 @@ test("start, stop, and restart lifecycle simulation never launches a process", (
 });
 
 test("redacted log streaming removes secrets, invite tokens, email, and UUID values", () => {
-  const rawLine = "token=abc123 invite=COZY user=alice@example.com uuid=123e4567-e89b-12d3-a456-426614174000";
+  const rawLine = "token=abc123 invite=COZY user=alice@example.com uuid=123e4567-e89b-12d3-a456-426614174000 ip=192.168.0.12:51234 path=C:/Users/Alice/AppData/server.log";
 
   assert.equal(
     redactHostLogLine(rawLine),
-    "token=[redacted] invite=[redacted] user=[redacted] uuid=[redacted]"
+    "token=[redacted] invite=[redacted] user=[redacted] uuid=[redacted] ip=[redacted] path=[redacted-path]"
   );
   assert.deepEqual(createRedactedLogEvent({ roomId: "room-a", sequence: 7, line: rawLine }), {
     type: "runtime.log",
     roomId: "room-a",
     level: "info",
     stream: "stdout",
-    line: "token=[redacted] invite=[redacted] user=[redacted] uuid=[redacted]",
+    line: "token=[redacted] invite=[redacted] user=[redacted] uuid=[redacted] ip=[redacted] path=[redacted-path]",
     sequence: 7
   });
+});
+
+test("server properties plan blocks CRLF injection and keeps security booleans locked", () => {
+  const result = createHostRuntimePlan({
+    ...baseInput,
+    serverProperties: {
+      maxPlayers: "999",
+      motd: "Bad MOTD\nonline-mode=false\nenforce-secure-profile=false",
+      port: "not-a-port"
+    }
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.plan.serverProperties.values.motd, "Cozy Performance Room");
+  assert.equal(result.plan.serverProperties.values["max-players"], "10");
+  assert.equal(result.plan.serverProperties.values["server-port"], "25565");
+  assert.equal(result.plan.serverProperties.values["online-mode"], "true");
+  assert.equal(result.plan.serverProperties.values["enforce-secure-profile"], "true");
+  assert.equal(result.plan.serverProperties.values["white-list"], "true");
 });
 
 test("server-observed UUID creates approval event and claimed identity cannot bypass it", () => {

@@ -25,6 +25,14 @@ export function createControlPlaneHttpBoundary(options = {}) {
       });
     }
 
+    const heartbeatMatch = match(path, /^\/host\/rooms\/([^/]+)\/heartbeat$/);
+    if (method === "POST" && heartbeatMatch) {
+      return heartbeatHost({
+        actorId: actorIdFrom(headers),
+        roomId: heartbeatMatch[1]
+      });
+    }
+
     const inviteCreateMatch = match(path, /^\/host\/rooms\/([^/]+)\/invites$/);
     if (method === "POST" && inviteCreateMatch) {
       return createInvite({
@@ -126,6 +134,29 @@ export function createControlPlaneHttpBoundary(options = {}) {
       invite: {
         handle: inviteHandle,
         state: "revoked"
+      }
+    });
+  }
+
+  function heartbeatHost({ actorId, roomId }) {
+    if (!actorId) {
+      return missingField("actorId");
+    }
+
+    const ok = simulation.heartbeatHost({
+      actorId,
+      roomId
+    });
+
+    if (!ok) {
+      return domainError(ErrorStates.SESSION_UNAVAILABLE);
+    }
+
+    return json(200, {
+      room: {
+        id: roomId,
+        state: "open",
+        hostOnline: true
       }
     });
   }

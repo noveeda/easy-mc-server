@@ -1,4 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { isIP } from "node:net";
 import { deflateRawSync } from "node:zlib";
 
 export const MrpackFailureReasons = Object.freeze({
@@ -40,12 +42,203 @@ const mvp0ApprovedFiles = Object.freeze({
   })
 });
 
+const firstPartyArtifactPaths = new Set([
+  "mods/local-room-client-connection-0.1.0-alpha.jar",
+  "mods/local-room-server-bridge-0.1.0-alpha.jar"
+]);
+
+const firstPartyArtifactJarExpectations = Object.freeze({
+  "mods/local-room-client-connection-0.1.0-alpha.jar": Object.freeze({
+    className: "com/easymc/room/client/LocalRoomClientMod.class"
+  }),
+  "mods/local-room-server-bridge-0.1.0-alpha.jar": Object.freeze({
+    className: "com/easymc/room/server/LocalRoomServerBridgeMod.class"
+  })
+});
+
 export async function readMrpackTemplate(path) {
   return JSON.parse(await readFile(path, "utf8"));
 }
 
-export function validateMrpackTemplate(template = {}) {
+export function applyFirstPartyArtifactLocks(template = {}, firstPartyArtifacts = []) {
+  const locks = normalizeFirstPartyArtifactLocks(firstPartyArtifacts);
+  const next = structuredCloneJson(template);
+
+  next.files = (Array.isArray(next.files) ? next.files : []).map((file) => {
+    const lock = locks[file?.path];
+    if (!lock) {
+      return file;
+    }
+
+    return {
+      ...file,
+      downloads: lock.downloads,
+      hashes: {
+        sha1: lock.hashes.sha1,
+        sha512: lock.hashes.sha512
+      },
+      fileSize: lock.fileSize
+    };
+  });
+
+  return next;
+}
+
+export function createFirstPartyArtifactLock({ path, downloads, bytes } = {}) {
+  const contents = Buffer.from(bytes ?? []);
+  const hashes = {
+    sha1: createHash("sha1").update(contents).digest("hex"),
+    sha512: createHash("sha512").update(contents).digest("hex")
+  };
+  const issues = validateSingleFirstPartyArtifactLock({
+    path,
+    downloads,
+    hashes,
+    fileSize: contents.byteLength
+  });
+
+  if (issues.length > 0) {
+    throw new Error(issues[0]);
+  }
+
+  return {
+    path,
+    downloads: [...(downloads ?? [])],
+    hashes,
+    fileSize: contents.byteLength
+  };
+}
+
+export async function createFirstPartyArtifactLockFromFile({
+  path,
+  artifactPath,
+  downloadUrl
+} = {}) {
+  if (!firstPartyArtifactPaths.has(path)) {
+    throw new Error(`Unknown first-party artifact path: ${path ?? "<missing>"}`);
+  }
+
+  if (!artifactPath || typeof artifactPath !== "string" || artifactPath.startsWith("file:")) {
+    throw new Error("First-party artifact bytes must come from an explicit local jar path.");
+  }
+
+  const urlReadiness = validateFirstPartyArtifactDownloadUrl(downloadUrl);
+
+  if (!urlReadiness.ok) {
+    throw new Error(urlReadiness.message);
+  }
+
+  const bytes = await readFile(artifactPath);
+  const jarReadiness = validateFirstPartyArtifactJarBytes({ path, bytes });
+
+  if (!jarReadiness.ok) {
+    throw new Error(jarReadiness.message);
+  }
+
+  return createFirstPartyArtifactLock({
+    path,
+    downloads: [downloadUrl],
+    bytes
+  });
+}
+
+export function validateFirstPartyArtifactJarBytes({ path, bytes } = {}) {
+  const expected = firstPartyArtifactJarExpectations[path];
+  if (!expected) {
+    return {
+      ok: false,
+      message: `Unknown first-party artifact path: ${path ?? "<missing>"}`
+    };
+  }
+
+  const contents = Buffer.from(bytes ?? []);
+  let entries;
+
+  try {
+    entries = listZipEntryNames(contents);
+  } catch (error) {
+    return {
+      ok: false,
+      message: `First-party artifact jar is not readable: ${error instanceof Error ? error.message : String(error)}`
+    };
+  }
+
+  if (!entries.includes("fabric.mod.json")) {
+    return {
+      ok: false,
+      message: "First-party artifact jar must include fabric.mod.json."
+    };
+  }
+
+  if (!entries.includes(expected.className)) {
+    return {
+      ok: false,
+      message: `First-party artifact jar must include ${expected.className}.`
+    };
+  }
+
+  if (!entries.some((entry) => entry.endsWith(".class"))) {
+    return {
+      ok: false,
+      message: "First-party artifact jar must include at least one compiled class."
+    };
+  }
+
+  return {
+    ok: true,
+    entries
+  };
+}
+
+export function validateFirstPartyArtifactDownloadUrl(value) {
+  if (typeof value !== "string" || value.length === 0) {
+    return {
+      ok: false,
+      message: "First-party artifact download URL is required."
+    };
+  }
+
+  let parsed;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return {
+      ok: false,
+      message: "First-party artifact download URL must be an absolute HTTPS URL."
+    };
+  }
+
+  if (parsed.protocol !== "https:" || parsed.username || parsed.password) {
+    return {
+      ok: false,
+      message: "First-party artifact download URL must be a credential-free HTTPS URL."
+    };
+  }
+
+  if (value.includes("REPLACE_WITH_") || value.includes("<signed-https-artifact-url>")) {
+    return {
+      ok: false,
+      message: "First-party artifact download URL must not contain placeholder values."
+    };
+  }
+
+  if (isReservedArtifactHost(parsed.hostname)) {
+    return {
+      ok: false,
+      message: "First-party artifact download URL must not use localhost, private IPs, or reserved example/test hosts."
+    };
+  }
+
+  return {
+    ok: true,
+    href: parsed.href
+  };
+}
+
+export function validateMrpackTemplate(template = {}, options = {}) {
   const blockers = [];
+  const firstPartyArtifactIssues = collectFirstPartyArtifactLockIssues(options.firstPartyArtifacts);
+  const approvedFiles = createApprovedFileLock(options.firstPartyArtifacts);
 
   if (template.formatVersion !== 1 || template.game !== "minecraft" || !template.dependencies?.minecraft || !template.dependencies?.["fabric-loader"]) {
     blockers.push({
@@ -64,14 +257,12 @@ export function validateMrpackTemplate(template = {}) {
     });
   }
 
+  blockers.push(...firstPartyArtifactIssues.map((issue) => metadataBlocker(issue.path, issue.message)));
+
   for (const file of files) {
     const path = file?.path ?? "<unknown>";
-    const metadataIssues = validateFileMetadata(file);
-    blockers.push(...metadataIssues.map((message) => ({
-      reason: MrpackFailureReasons.UNSAFE_DOWNLOAD_METADATA,
-      path,
-      message
-    })));
+    const metadataIssues = validateFileMetadata(file, approvedFiles);
+    blockers.push(...metadataIssues.map((message) => metadataBlocker(path, message)));
 
     if (isFirstPartyPlaceholder(file)) {
       blockers.push({
@@ -93,8 +284,8 @@ export function validateMrpackTemplate(template = {}) {
   };
 }
 
-export function buildMrpackManifest(template = {}) {
-  const validation = validateMrpackTemplate(template);
+export function buildMrpackManifest(template = {}, options = {}) {
+  const validation = validateMrpackTemplate(template, options);
   if (!validation.ok) {
     return fail(validation.blockers[0].reason, { blockers: validation.blockers });
   }
@@ -105,8 +296,8 @@ export function buildMrpackManifest(template = {}) {
   };
 }
 
-export async function writeMrpack(template = {}, outputPath) {
-  const manifest = buildMrpackManifest(template);
+export async function writeMrpack(template = {}, outputPath, options = {}) {
+  const manifest = buildMrpackManifest(template, options);
   if (!manifest.ok) {
     return manifest;
   }
@@ -131,14 +322,14 @@ export function createMrpackArchive(manifest) {
   ]);
 }
 
-function validateFileMetadata(file = {}) {
+function validateFileMetadata(file = {}, approvedFiles = mvp0ApprovedFiles) {
   const issues = [];
 
   if (!file.path || file.path.includes("..") || file.path.startsWith("/") || file.path.includes("\\")) {
     issues.push("Pack file path must be a safe relative path.");
   }
 
-  if (!Array.isArray(file.downloads) || file.downloads.length === 0 || !file.downloads.every(isHttpsUrl)) {
+  if (!hasOriginalHttpsDownloads(file.downloads)) {
     issues.push("Pack file must use original HTTPS download URLs.");
   }
 
@@ -150,7 +341,7 @@ function validateFileMetadata(file = {}) {
     issues.push("Pack file must include a positive file size.");
   }
 
-  if (!matchesApprovedFileLock(file)) {
+  if (!matchesApprovedFileLock(file, approvedFiles)) {
     issues.push("Pack file must match the MVP-0 approved source URL, hashes, and file size lock.");
   }
 
@@ -159,7 +350,7 @@ function validateFileMetadata(file = {}) {
 
 function isFirstPartyPlaceholder(file = {}) {
   const haystack = JSON.stringify(file);
-  return file.path?.includes("local-room-client")
+  return firstPartyArtifactPaths.has(file.path)
     && (
       haystack.includes("REPLACE_WITH_")
       || haystack.includes("example.invalid")
@@ -167,8 +358,8 @@ function isFirstPartyPlaceholder(file = {}) {
     );
 }
 
-function matchesApprovedFileLock(file = {}) {
-  const approved = mvp0ApprovedFiles[file.path];
+function matchesApprovedFileLock(file = {}, approvedFiles = mvp0ApprovedFiles) {
+  const approved = approvedFiles[file.path];
   if (!approved) {
     return false;
   }
@@ -177,6 +368,81 @@ function matchesApprovedFileLock(file = {}) {
     && file.hashes?.sha1 === approved.hashes.sha1
     && file.hashes?.sha512 === approved.hashes.sha512
     && file.fileSize === approved.fileSize;
+}
+
+function createApprovedFileLock(firstPartyArtifacts = []) {
+  return Object.freeze({
+    ...mvp0ApprovedFiles,
+    ...normalizeFirstPartyArtifactLocks(firstPartyArtifacts)
+  });
+}
+
+function normalizeFirstPartyArtifactLocks(firstPartyArtifacts = []) {
+  const locks = {};
+
+  if (!Array.isArray(firstPartyArtifacts)) {
+    return Object.freeze(locks);
+  }
+
+  for (const artifact of firstPartyArtifacts) {
+    if (validateSingleFirstPartyArtifactLock(artifact).length > 0) {
+      continue;
+    }
+
+    locks[artifact.path] = Object.freeze({
+      downloads: Object.freeze([...(artifact.downloads ?? [])]),
+      hashes: Object.freeze({
+        sha1: artifact.hashes?.sha1 ?? "",
+        sha512: artifact.hashes?.sha512 ?? ""
+      }),
+      fileSize: artifact.fileSize
+    });
+  }
+
+  return Object.freeze(locks);
+}
+
+function collectFirstPartyArtifactLockIssues(firstPartyArtifacts = []) {
+  if (!Array.isArray(firstPartyArtifacts)) {
+    return [{
+      path: "<first-party-artifacts>",
+      message: "First-party artifact locks must be provided as a list."
+    }];
+  }
+
+  return firstPartyArtifacts.flatMap((artifact) => validateSingleFirstPartyArtifactLock(artifact).map((message) => ({
+    path: artifact?.path ?? "<first-party-artifact>",
+    message
+  })));
+}
+
+function validateSingleFirstPartyArtifactLock(artifact = {}) {
+  const issues = [];
+
+  if (!firstPartyArtifactPaths.has(artifact?.path)) {
+    issues.push(`Unknown first-party artifact path: ${artifact?.path ?? "<missing>"}`);
+  }
+
+  if (!Array.isArray(artifact?.downloads) || artifact.downloads.length === 0) {
+    issues.push("First-party artifact download URL is required.");
+  } else {
+    for (const download of artifact.downloads) {
+      const readiness = validateFirstPartyArtifactDownloadUrl(download);
+      if (!readiness.ok) {
+        issues.push(readiness.message);
+      }
+    }
+  }
+
+  if (!isSha1(artifact?.hashes?.sha1) || !isSha512(artifact?.hashes?.sha512)) {
+    issues.push("First-party artifact lock must include SHA1 and SHA512 hashes.");
+  }
+
+  if (!Number.isInteger(artifact?.fileSize) || artifact.fileSize <= 0) {
+    issues.push("First-party artifact lock must include a positive file size.");
+  }
+
+  return issues;
 }
 
 function sameArray(left = [], right = []) {
@@ -196,6 +462,10 @@ function normalizeManifest(template) {
     files: template.files,
     dependencies: template.dependencies
   };
+}
+
+function structuredCloneJson(value) {
+  return JSON.parse(JSON.stringify(value));
 }
 
 function createZipArchive(entries) {
@@ -277,6 +547,57 @@ function createEndOfCentralDirectory({ entryCount, centralSize, centralOffset })
   return end;
 }
 
+function listZipEntryNames(buffer) {
+  if (buffer.byteLength < 22) {
+    throw new Error("zip archive is too small");
+  }
+
+  const endOffset = findEndOfCentralDirectory(buffer);
+  const entryCount = buffer.readUInt16LE(endOffset + 10);
+  const centralSize = buffer.readUInt32LE(endOffset + 12);
+  const centralOffset = buffer.readUInt32LE(endOffset + 16);
+
+  if (centralOffset + centralSize > buffer.byteLength) {
+    throw new Error("central directory is outside the archive");
+  }
+
+  const entries = [];
+  let offset = centralOffset;
+
+  for (let index = 0; index < entryCount; index += 1) {
+    if (offset + 46 > buffer.byteLength || buffer.readUInt32LE(offset) !== 0x02014b50) {
+      throw new Error("central directory entry is invalid");
+    }
+
+    const nameLength = buffer.readUInt16LE(offset + 28);
+    const extraLength = buffer.readUInt16LE(offset + 30);
+    const commentLength = buffer.readUInt16LE(offset + 32);
+    const nameStart = offset + 46;
+    const nameEnd = nameStart + nameLength;
+
+    if (nameEnd > buffer.byteLength) {
+      throw new Error("central directory filename is outside the archive");
+    }
+
+    entries.push(buffer.subarray(nameStart, nameEnd).toString("utf8"));
+    offset = nameEnd + extraLength + commentLength;
+  }
+
+  return entries;
+}
+
+function findEndOfCentralDirectory(buffer) {
+  const minimumOffset = Math.max(0, buffer.byteLength - 0xffff - 22);
+
+  for (let offset = buffer.byteLength - 22; offset >= minimumOffset; offset -= 1) {
+    if (buffer.readUInt32LE(offset) === 0x06054b50) {
+      return offset;
+    }
+  }
+
+  throw new Error("end of central directory was not found");
+}
+
 function crc32(buffer) {
   let crc = 0xffffffff;
 
@@ -295,8 +616,69 @@ const crcTable = Array.from({ length: 256 }, (_, index) => {
   return value >>> 0;
 });
 
-function isHttpsUrl(value) {
+function hasOriginalHttpsDownloads(downloads) {
+  return Array.isArray(downloads) && downloads.length > 0 && downloads.every(isOriginalHttpsDownloadUrl);
+}
+
+function isOriginalHttpsDownloadUrl(value) {
   return typeof value === "string" && value.startsWith("https://") && !value.includes("example.invalid");
+}
+
+function metadataBlocker(path, message) {
+  return {
+    reason: MrpackFailureReasons.UNSAFE_DOWNLOAD_METADATA,
+    path,
+    message
+  };
+}
+
+function isReservedArtifactHost(hostname) {
+  const host = hostname.toLowerCase().replace(/^\[/, "").replace(/\]$/, "");
+  const ipVersion = isIP(host);
+
+  if (
+    host === "localhost"
+    || host.endsWith(".localhost")
+    || host === "example.com"
+    || host === "example.net"
+    || host === "example.org"
+    || host === "example.test"
+    || host.endsWith(".example")
+    || host.endsWith(".invalid")
+    || host.endsWith(".test")
+    || host.endsWith(".local")
+    || host.endsWith(".lan")
+  ) {
+    return true;
+  }
+
+  if (ipVersion === 4) {
+    const [first, second] = host.split(".").map((part) => Number.parseInt(part, 10));
+    return first === 10
+      || first === 127
+      || first === 0
+      || (first === 172 && second >= 16 && second <= 31)
+      || (first === 192 && second === 168)
+      || (first === 169 && second === 254)
+      || (first === 100 && second >= 64 && second <= 127)
+      || (first === 192 && second === 0)
+      || (first === 198 && (second === 18 || second === 19))
+      || (first === 198 && second === 51)
+      || (first === 203 && second === 0)
+      || first >= 224;
+  }
+
+  if (ipVersion === 6) {
+    return host === "::1"
+      || host === "::"
+      || host.startsWith("::ffff:")
+      || host.startsWith("fc")
+      || host.startsWith("fd")
+      || host.startsWith("fe80")
+      || host.startsWith("2001:db8");
+  }
+
+  return false;
 }
 
 function isSha1(value) {

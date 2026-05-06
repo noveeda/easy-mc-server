@@ -12,8 +12,10 @@ import {
 } from "../src/connection/loopback-plan.mjs";
 
 test("Fabric client connection mod skeleton declares supported mod metadata", () => {
-  assert.equal(existsSync("mods/client-fabric/src/main/java/com/easymc/room/client/LocalRoomClientMod.java"), true);
+  const sourcePath = "mods/client-fabric/src/main/java/com/easymc/room/client/LocalRoomClientMod.java";
+  assert.equal(existsSync(sourcePath), true);
 
+  const source = readFileSync(sourcePath, "utf8");
   const metadata = JSON.parse(readFileSync("mods/client-fabric/src/main/resources/fabric.mod.json", "utf8"));
   assert.deepEqual(
     {
@@ -31,6 +33,8 @@ test("Fabric client connection mod skeleton declares supported mod metadata", ()
       entrypoint: "com.easymc.room.client.LocalRoomClientMod"
     }
   );
+  assert.match(source, /implements\s+ClientModInitializer/);
+  assert.match(source, /void\s+onInitializeClient\s*\(\)/);
 });
 
 test("client loopback plan connects Minecraft to localhost and relay to the approved room", () => {

@@ -1,9 +1,12 @@
 package com.easymc.room.client;
 
-public final class LocalRoomClientMod {
+import net.fabricmc.api.ClientModInitializer;
+
+public final class LocalRoomClientMod implements ClientModInitializer {
   public static final String MOD_ID = "easy_mc_room_client";
 
-  private LocalRoomClientMod() {
+  @Override
+  public void onInitializeClient() {
   }
 
   public static ClientRuntimeDescriptor describeRuntime() {

@@ -113,6 +113,7 @@ export function createControlPlaneSimulation(options = {}) {
     return {
       ok: true,
       inviteId,
+      handle: `invite_handle_${randomUUID()}`,
       token,
       expiresAt: invite.expiresAt
     };

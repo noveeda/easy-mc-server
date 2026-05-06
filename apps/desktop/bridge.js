@@ -15,11 +15,17 @@
     openRoom: "desktop_open_room",
     closeRoom: "desktop_close_room",
     restartRoom: "desktop_restart_room",
+    sendServerCommand: "desktop_send_server_command",
+    statusRoom: "desktop_status_room",
     resetRoom: "desktop_reset_room"
   });
 
   function getInvoke() {
     return global.__TAURI__?.core?.invoke;
+  }
+
+  function getEventApi() {
+    return global.__TAURI__?.event;
   }
 
   async function invokeOrFallback(command, payload, fallback) {
@@ -68,6 +74,19 @@
 
   const bridge = {
     commands,
+    isDesktopRuntimeAvailable() {
+      return typeof getInvoke() === "function";
+    },
+    listenRuntimeEvents(callback) {
+      const listen = getEventApi()?.listen;
+      if (typeof listen !== "function" || typeof callback !== "function") {
+        return Promise.resolve(() => {});
+      }
+
+      return listen("desktop-runtime-event", (event) => {
+        callback(event?.payload ?? {});
+      });
+    },
     prepareRoom(payload) {
       return invokeOrFallback(commands.prepareRoom, payload, readyResponse);
     },
@@ -82,6 +101,23 @@
     },
     restartRoom(payload) {
       return invokeOrFallback(commands.restartRoom, payload, blockedOpenResponse);
+    },
+    sendServerCommand(payload) {
+      return invokeOrFallback(commands.sendServerCommand, payload, () => ({
+        ok: false,
+        status: "blocked",
+        prepared: true,
+        open: false,
+        previewOpen: false,
+        blocker: {
+          title: "명령을 보낼 수 없습니다",
+          message: "데스크톱 앱에서 방이 열린 뒤 서버 명령을 보낼 수 있습니다."
+        },
+        diagnostics: fallbackDiagnostics
+      }));
+    },
+    statusRoom(payload) {
+      return invokeOrFallback(commands.statusRoom, payload, readyResponse);
     },
     resetRoom(payload) {
       return invokeOrFallback(commands.resetRoom, payload, () => ({

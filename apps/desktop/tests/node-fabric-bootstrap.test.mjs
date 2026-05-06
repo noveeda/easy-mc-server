@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { access, mkdtemp, readFile, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { HostRuntimeStates, createHostRuntimePlan } from "../src/runtime/host-runtime.mjs";
 import {
@@ -39,6 +39,64 @@ test("node Fabric bootstrap downloads verified bytes, installs launcher jar, and
       cachePath: `${fixture.root}/cache/downloads/fabric-server-1.21.1-0.16.10-${sha256(jarBytes)}.jar`,
       launcherJar: `${fixture.root}/rooms/room-a/runtime/fabric-server-1.21.1-0.16.10.jar`,
       sha256: sha256(jarBytes),
+      installedAt: "2026-04-30T00:00:00.000Z"
+    });
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("node Fabric bootstrap reuses a verified launcher jar without fetch", async () => {
+  const fixture = await createRuntimeFixture();
+  const jarBytes = Buffer.from("previously verified fabric server jar");
+  const plan = createRuntimePlan(fixture.root, sha256(jarBytes));
+
+  try {
+    await mkdir(dirname(toNative(plan.fabric.launcherJar)), { recursive: true });
+    await writeFile(toNative(plan.fabric.launcherJar), jarBytes);
+
+    const result = await bootstrapFabricServer(plan, {
+      now: new Date("2026-04-30T00:00:00.000Z")
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.reused, true);
+    assert.equal(result.artifactSource, "launcher");
+    assert.equal(result.sha256, sha256(jarBytes));
+    assert.deepEqual(await readFile(toNative(result.cachePath)), jarBytes);
+    assert.deepEqual(await readFile(toNative(result.launcherJar)), jarBytes);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("node Fabric bootstrap installs a verified cached jar without fetch", async () => {
+  const fixture = await createRuntimeFixture();
+  const jarBytes = Buffer.from("cached verified fabric server jar");
+  const jarSha256 = sha256(jarBytes);
+  const plan = createRuntimePlan(fixture.root, jarSha256);
+  const cachePath = fabricCachePath(fixture.root, jarSha256);
+
+  try {
+    await mkdir(dirname(toNative(cachePath)), { recursive: true });
+    await writeFile(toNative(cachePath), jarBytes);
+
+    const result = await bootstrapFabricServer(plan, {
+      now: new Date("2026-04-30T00:00:00.000Z")
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.reused, true);
+    assert.equal(result.artifactSource, "cache");
+    assert.equal(result.cachePath, cachePath);
+    assert.deepEqual(await readFile(toNative(result.launcherJar)), jarBytes);
+    assert.deepEqual(JSON.parse(await readFile(toNative(result.metadataPath), "utf8")), {
+      roomId: "room-a",
+      provider: "Fabric Meta",
+      sourceUrl: "https://meta.fabricmc.net/v2/versions/loader/1.21.1/0.16.10/server/jar",
+      cachePath,
+      launcherJar: `${fixture.root}/rooms/room-a/runtime/fabric-server-1.21.1-0.16.10.jar`,
+      sha256: jarSha256,
       installedAt: "2026-04-30T00:00:00.000Z"
     });
   } finally {
@@ -332,6 +390,10 @@ function okResponse(bytes, overrides = {}) {
     arrayBuffer: async () => bytes,
     ...overrides
   };
+}
+
+function fabricCachePath(root, jarSha256) {
+  return `${root}/cache/downloads/fabric-server-1.21.1-0.16.10-${jarSha256}.jar`;
 }
 
 function sha256(bytes) {

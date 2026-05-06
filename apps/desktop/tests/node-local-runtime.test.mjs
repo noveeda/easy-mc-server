@@ -1,9 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { EventEmitter } from "node:events";
-import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
+import { setImmediate as waitForTasks } from "node:timers/promises";
 import { HostRuntimeStates, createHostRuntimePlan } from "../src/runtime/host-runtime.mjs";
 import {
   NodeLocalRuntimeFailureReasons,
@@ -64,6 +66,85 @@ test("node local runtime fails closed when a verified mod source is missing", as
   }
 });
 
+test("node local runtime downloads curated mods from the approved source before materialization", async () => {
+  const fixture = await createRuntimeFixture({ createModSource: false });
+
+  try {
+    fixture.plan.mods.entries[0].downloadUrl = "https://cdn.modrinth.com/data/example/versions/example/fabric-api.jar";
+    fixture.plan.mods.entries[0].expectedFileSize = Buffer.byteLength("fake mod jar");
+
+    const result = await materializeRoom(fixture.plan, {
+      fetch: async () => ({
+        ok: true,
+        url: "https://cdn.modrinth.com/data/example/versions/example/fabric-api.jar",
+        arrayBuffer: async () => Buffer.from("fake mod jar")
+      })
+    });
+
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.copiedMods.map((mod) => mod.modId), ["fabric-api"]);
+    assert.equal(await readFile(fixture.modSource, "utf8"), "fake mod jar");
+    assert.equal(await exists(join(fixture.roomRoot, "mods", "fabric-api.jar")), true);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("node local runtime refuses curated mod downloads from untrusted hosts", async () => {
+  const fixture = await createRuntimeFixture({ createModSource: false });
+
+  try {
+    fixture.plan.mods.entries[0].downloadUrl = "https://example.invalid/fabric-api.jar";
+
+    const result = await materializeRoom(fixture.plan, {
+      fetch: async () => {
+        throw new Error("fetch should not run");
+      }
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.failure.reason, NodeLocalRuntimeFailureReasons.MOD_DOWNLOAD_UNTRUSTED);
+    assert.equal(await exists(fixture.modSource), false);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("node local runtime fails closed when a verified mod source hash does not match", async () => {
+  const fixture = await createRuntimeFixture();
+
+  try {
+    await writeFile(fixture.modSource, "tampered mod jar", "utf8");
+
+    const result = await materializeRoom(fixture.plan);
+
+    assert.equal(result.ok, false);
+    assert.equal(result.failure.reason, NodeLocalRuntimeFailureReasons.MOD_CHECKSUM_MISMATCH);
+    assert.equal(result.failure.detail.modId, "fabric-api");
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("node local runtime removes stale fixed-pack mods during materialization", async () => {
+  const fixture = await createRuntimeFixture();
+
+  try {
+    const staleMod = join(fixture.roomRoot, "mods", "stale-placeholder.jar");
+    await mkdir(dirname(staleMod), { recursive: true });
+    await writeFile(staleMod, "not a jar", "utf8");
+
+    const result = await materializeRoom(fixture.plan);
+
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.removedMods, ["stale-placeholder.jar"]);
+    assert.equal(await exists(staleMod), false);
+    assert.equal(await exists(join(fixture.roomRoot, "mods", "fabric-api.jar")), true);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
 test("node local runtime rejects materialization outside the app-data root", async () => {
   const fixture = await createRuntimeFixture();
   const outsideRoot = `${fixture.root}-outside`;
@@ -77,6 +158,31 @@ test("node local runtime rejects materialization outside the app-data root", asy
     assert.equal(result.ok, false);
     assert.equal(result.failure.reason, NodeLocalRuntimeFailureReasons.INVALID_RUNTIME_PLAN);
     assert.equal(await exists(outsideRoot), false);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+    await rm(outsideRoot, { recursive: true, force: true });
+  }
+});
+
+test("node local runtime rejects symlinked managed directories", async (t) => {
+  const fixture = await createRuntimeFixture();
+  const outsideRoot = `${fixture.root}-outside`;
+
+  try {
+    await mkdir(outsideRoot, { recursive: true });
+    await mkdir(fixture.roomRoot, { recursive: true });
+    try {
+      await symlink(outsideRoot, join(fixture.roomRoot, "mods"), process.platform === "win32" ? "junction" : "dir");
+    } catch (error) {
+      t.skip(`symlink setup unavailable: ${error.code ?? error.message}`);
+      return;
+    }
+
+    const result = await materializeRoom(fixture.plan);
+
+    assert.equal(result.ok, false);
+    assert.equal(result.failure.reason, NodeLocalRuntimeFailureReasons.INVALID_RUNTIME_PLAN);
+    assert.equal(await exists(join(outsideRoot, "fabric-api.jar")), false);
   } finally {
     await rm(fixture.root, { recursive: true, force: true });
     await rm(outsideRoot, { recursive: true, force: true });
@@ -154,6 +260,219 @@ test("node local runtime lifecycle manager marks running after Done log", async 
 
     assert.equal(manager.status().state, HostRuntimeStates.RUNNING);
     assert.ok(manager.status().events.some((event) => event.type === "runtime.ready"));
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("node local runtime lifecycle manager reports server process CPU and memory metrics", async () => {
+  const fixture = await createRuntimeFixture();
+  const process = createFakeProcess({ pid: 4321 });
+  const totalBytes = 16 * 1024 * 1024 * 1024;
+  const workingSetBytes = 512 * 1024 * 1024;
+  const metricReads = [];
+
+  try {
+    await materializeRoom(fixture.plan);
+    await createLaunchArtifacts(fixture.plan);
+
+    const manager = createLocalServerLifecycleManager(fixture.plan, {
+      mode: "real",
+      spawn: () => process,
+      readProcessMetrics(pid, context) {
+        metricReads.push({ pid, context });
+        return {
+          pid,
+          source: "test-process",
+          measuredAt: "2026-05-02T00:00:00.000Z",
+          cpu: { processPercent: 12.5 },
+          memory: {
+            workingSetBytes,
+            totalBytes,
+            processPercent: 3.125
+          }
+        };
+      }
+    });
+
+    await manager.start();
+    const status = manager.status();
+
+    assert.equal(metricReads[0].pid, 4321);
+    assert.equal(status.metrics.pid, 4321);
+    assert.equal(status.metrics.source, "test-process");
+    assert.equal(status.metrics.cpu.processPercent, 12.5);
+    assert.equal(status.metrics.memory.workingSetBytes, workingSetBytes);
+    assert.equal(status.metrics.memory.totalBytes, totalBytes);
+    assert.equal(status.metrics.memory.processPercent, 3.1);
+    assert.equal(status.metrics.basis.cpu, "process_cpu_percent_of_total_logical_cpu");
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("node local runtime lifecycle manager keeps CPU pending while memory metrics are available", async () => {
+  const fixture = await createRuntimeFixture();
+  const process = createFakeProcess({ pid: 4321 });
+  const totalBytes = 16 * 1024 * 1024 * 1024;
+  const workingSetBytes = 512 * 1024 * 1024;
+
+  try {
+    await materializeRoom(fixture.plan);
+    await createLaunchArtifacts(fixture.plan);
+
+    const manager = createLocalServerLifecycleManager(fixture.plan, {
+      mode: "real",
+      spawn: () => process,
+      readProcessMetrics(pid) {
+        return {
+          pid,
+          source: "test-process",
+          measuredAt: "2026-05-02T00:00:00.000Z",
+          cpu: { processPercent: null },
+          memory: {
+            workingSetBytes,
+            totalBytes
+          }
+        };
+      }
+    });
+
+    await manager.start();
+    const status = manager.status();
+
+    assert.equal(status.metrics.pid, 4321);
+    assert.equal(status.metrics.cpu.processPercent, null);
+    assert.equal(status.metrics.memory.workingSetBytes, workingSetBytes);
+    assert.equal(status.metrics.memory.totalBytes, totalBytes);
+    assert.equal(status.metrics.memory.processPercent, 3.1);
+    assert.equal(status.metrics.basis.process, "minecraft_server_java_process");
+    assert.equal(status.metrics.basis.memory, "process_working_set_percent_of_total_physical_memory");
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("node local runtime lifecycle manager passes the previous process metric sample", async () => {
+  const fixture = await createRuntimeFixture();
+  const process = createFakeProcess({ pid: 4321 });
+  const metricContexts = [];
+
+  try {
+    await materializeRoom(fixture.plan);
+    await createLaunchArtifacts(fixture.plan);
+
+    const manager = createLocalServerLifecycleManager(fixture.plan, {
+      mode: "real",
+      spawn: () => process,
+      metricsSampleIntervalMs: 0,
+      readProcessMetrics(pid, context) {
+        metricContexts.push(context);
+        return withMetricSample({
+          pid,
+          source: "test-process",
+          measuredAt: `2026-05-02T00:00:0${metricContexts.length}.000Z`,
+          cpu: { processPercent: metricContexts.length },
+          memory: {
+            workingSetBytes: metricContexts.length * 1024,
+            totalBytes: 1024 * 1024,
+            processPercent: 0.1
+          }
+        }, {
+          pid,
+          cpuTimeSeconds: metricContexts.length,
+          measuredAtMs: metricContexts.length * 1000
+        });
+      }
+    });
+
+    await manager.start();
+    const secondStatus = manager.status();
+
+    assert.equal(metricContexts.length, 2);
+    assert.equal(metricContexts[0].previousSample, null);
+    assert.deepEqual(metricContexts[1].previousSample, {
+      pid: 4321,
+      cpuTimeSeconds: 1,
+      measuredAtMs: 1000
+    });
+    assert.equal(secondStatus.metrics.cpu.processPercent, 2);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("node local runtime lifecycle manager exposes async process metrics after sampling resolves", async () => {
+  const fixture = await createRuntimeFixture();
+  const process = createFakeProcess({ pid: 4321 });
+  let resolveMetrics;
+  const metricsPromise = new Promise((resolve) => {
+    resolveMetrics = resolve;
+  });
+
+  try {
+    await materializeRoom(fixture.plan);
+    await createLaunchArtifacts(fixture.plan);
+
+    const manager = createLocalServerLifecycleManager(fixture.plan, {
+      mode: "real",
+      spawn: () => process,
+      readProcessMetrics() {
+        return metricsPromise;
+      }
+    });
+
+    await manager.start();
+    assert.equal(manager.status().metrics, null);
+
+    resolveMetrics({
+      pid: 4321,
+      source: "async-test-process",
+      measuredAt: "2026-05-02T00:00:00.000Z",
+      cpu: { processPercent: 4.5 },
+      memory: {
+        workingSetBytes: 256 * 1024 * 1024,
+        totalBytes: 8 * 1024 * 1024 * 1024,
+        processPercent: 3.125
+      }
+    });
+    await waitForTasks();
+
+    const status = manager.status();
+    assert.equal(status.metrics.pid, 4321);
+    assert.equal(status.metrics.source, "async-test-process");
+    assert.equal(status.metrics.cpu.processPercent, 4.5);
+    assert.equal(status.metrics.memory.processPercent, 3.1);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("node local runtime lifecycle manager emits a diagnostic event when process metrics cannot be read", async () => {
+  const fixture = await createRuntimeFixture();
+  const process = createFakeProcess({ pid: 4321 });
+
+  try {
+    await materializeRoom(fixture.plan);
+    await createLaunchArtifacts(fixture.plan);
+
+    const manager = createLocalServerLifecycleManager(fixture.plan, {
+      mode: "real",
+      spawn: () => process,
+      readProcessMetrics() {
+        return Promise.reject(new Error("spawn EPERM"));
+      }
+    });
+
+    await manager.start();
+    await waitForTasks();
+
+    const status = manager.status();
+    const metricEvent = status.events.find((event) => event.type === "runtime.metrics_unavailable");
+
+    assert.equal(status.metrics, null);
+    assert.equal(metricEvent.source, "process");
+    assert.match(metricEvent.message, /spawn EPERM/);
   } finally {
     await rm(fixture.root, { recursive: true, force: true });
   }
@@ -274,6 +593,108 @@ test("node local runtime lifecycle manager stops with stdin command and waits fo
     assert.equal(process.killed, false);
     assert.deepEqual(result.exit, { code: 0, signal: null });
     assert.equal(manager.status().hasProcess, false);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("node local runtime lifecycle manager sends server console commands to stdin", async () => {
+  const fixture = await createRuntimeFixture();
+  const process = createFakeProcess();
+
+  try {
+    await materializeRoom(fixture.plan);
+    await createLaunchArtifacts(fixture.plan);
+
+    const manager = createLocalServerLifecycleManager(fixture.plan, {
+      mode: "real",
+      spawn: () => process
+    });
+
+    await manager.start();
+    process.stdout.emit("data", "Done\n");
+
+    const result = await manager.sendCommand({ command: "/say hello token=secret" });
+    const commandEvent = manager.status().events.find((event) => event.type === "runtime.command");
+
+    assert.equal(result.ok, true);
+    assert.equal(result.state, HostRuntimeStates.RUNNING);
+    assert.deepEqual(process.stdinWrites, ["say hello token=secret\n"]);
+    assert.equal(commandEvent.line, "say hello token=[redacted]");
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("node local runtime lifecycle manager blocks dangerous server console commands", async () => {
+  const fixture = await createRuntimeFixture();
+  const process = createFakeProcess();
+
+  try {
+    await materializeRoom(fixture.plan);
+    await createLaunchArtifacts(fixture.plan);
+
+    const manager = createLocalServerLifecycleManager(fixture.plan, {
+      mode: "real",
+      spawn: () => process
+    });
+
+    await manager.start();
+    process.stdout.emit("data", "Done\n");
+
+    for (const command of ["op PlayerOne", "whitelist off", "stop", "reload"]) {
+      const result = await manager.sendCommand({ command });
+      assert.equal(result.ok, false);
+      assert.equal(result.failure.reason, NodeLocalRuntimeFailureReasons.SERVER_COMMAND_INVALID);
+      assert.equal(result.failure.detail.reason, "blocked_command");
+    }
+
+    assert.deepEqual(process.stdinWrites, []);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("node local runtime lifecycle manager reports server console write failures", async () => {
+  const fixture = await createRuntimeFixture();
+  const process = createFakeProcess({ stdinWriteError: new Error("stdin closed") });
+
+  try {
+    await materializeRoom(fixture.plan);
+    await createLaunchArtifacts(fixture.plan);
+
+    const manager = createLocalServerLifecycleManager(fixture.plan, {
+      mode: "real",
+      spawn: () => process
+    });
+
+    await manager.start();
+    process.stdout.emit("data", "Done\n");
+
+    const result = await manager.sendCommand({ command: "say hello" });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.failure.reason, NodeLocalRuntimeFailureReasons.SERVER_COMMAND_WRITE_FAILED);
+    assert.match(result.failure.detail.error, /stdin closed/);
+    assert.equal(manager.status().events.some((event) => event.type === "runtime.command"), false);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("node local runtime lifecycle manager rejects console commands before a process is running", async () => {
+  const fixture = await createRuntimeFixture();
+
+  try {
+    const manager = createLocalServerLifecycleManager(fixture.plan, { mode: "real" });
+
+    const notRunning = await manager.sendCommand({ command: "say hello" });
+    const invalid = await manager.sendCommand({ command: "say hello\nstop" });
+
+    assert.equal(notRunning.ok, false);
+    assert.equal(notRunning.failure.reason, NodeLocalRuntimeFailureReasons.PROCESS_NOT_RUNNING);
+    assert.equal(invalid.ok, false);
+    assert.equal(invalid.failure.reason, NodeLocalRuntimeFailureReasons.SERVER_COMMAND_INVALID);
   } finally {
     await rm(fixture.root, { recursive: true, force: true });
   }
@@ -432,14 +853,70 @@ test("node local runtime lifecycle manager marks crash pattern and redacts log e
   }
 });
 
+test("node local runtime does not treat Fabric crash-report module names as crashes", async () => {
+  const fixture = await createRuntimeFixture();
+  const process = createFakeProcess();
+
+  try {
+    await materializeRoom(fixture.plan);
+    await createLaunchArtifacts(fixture.plan);
+
+    const manager = createLocalServerLifecycleManager(fixture.plan, {
+      mode: "real",
+      spawn: () => process
+    });
+
+    await manager.start();
+    process.stdout.emit("data", "|-- fabric-crash-report-info-v1 0.2.29\n");
+    process.stdout.emit("data", "Done (0.702s)! For help, type \"help\"\n");
+
+    const status = manager.status();
+    assert.equal(status.state, HostRuntimeStates.RUNNING);
+    assert.equal(status.events.some((event) => event.type === "runtime.crashed"), false);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("node local runtime lifecycle manager keeps crash state after later ready logs", async () => {
+  const fixture = await createRuntimeFixture();
+  const process = createFakeProcess();
+
+  try {
+    await materializeRoom(fixture.plan);
+    await createLaunchArtifacts(fixture.plan);
+
+    const manager = createLocalServerLifecycleManager(fixture.plan, {
+      mode: "real",
+      spawn: () => process
+    });
+
+    await manager.start();
+    process.stderr.emit("data", "Exception failed during bootstrap\n");
+    process.stdout.emit("data", "Done (2.000s)! For help, type \"help\"\n");
+
+    const status = manager.status();
+    const readyEvents = status.events.filter((event) => event.type === "runtime.ready");
+    const crashEvents = status.events.filter((event) => event.type === "runtime.crashed");
+
+    assert.equal(status.state, HostRuntimeStates.CRASHED);
+    assert.equal(readyEvents.length, 0);
+    assert.equal(crashEvents.length, 1);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
 async function createRuntimeFixture(options = {}) {
   const root = (await mkdtemp(join(tmpdir(), "easy-mc-room-"))).replaceAll("\\", "/");
   const modSource = `${root}/cache/downloads/fabric-api.jar`;
   const roomRoot = `${root}/rooms/room-a`;
+  const modContents = "fake mod jar";
+  const modSha256 = sha256Text(modContents);
 
   if (options.createModSource !== false) {
     await mkdir(dirname(modSource), { recursive: true });
-    await writeFile(modSource, "fake mod jar", "utf8");
+    await writeFile(modSource, modContents, "utf8");
   }
 
   const runtime = createHostRuntimePlan({
@@ -483,8 +960,8 @@ async function createRuntimeFixture(options = {}) {
         {
           id: "fabric-api",
           fileName: "fabric-api.jar",
-          sha256: "fabric-api-sha",
-          expectedSha256: "fabric-api-sha",
+          sha256: modSha256,
+          expectedSha256: modSha256,
           source: modSource
         }
       ]
@@ -511,15 +988,24 @@ async function createLaunchArtifacts(plan) {
 
 function createFakeProcess(options = {}) {
   const process = new EventEmitter();
+  if (Number.isInteger(options.pid)) {
+    process.pid = options.pid;
+  }
   process.stdout = new EventEmitter();
   process.stderr = new EventEmitter();
   process.stdinWrites = [];
   process.exitCode = undefined;
   process.killed = false;
   process.stdin = {
-    write(command) {
+    write(command, callback) {
+      if (options.stdinWriteError) {
+        callback?.(options.stdinWriteError);
+        return false;
+      }
+
       process.stdinWrites.push(command);
       options.onStdinWrite?.(command);
+      callback?.();
       return true;
     }
   };
@@ -535,8 +1021,20 @@ function createFakeProcess(options = {}) {
   return process;
 }
 
+function withMetricSample(metrics, sample) {
+  Object.defineProperty(metrics, "_sample", {
+    value: sample,
+    enumerable: false
+  });
+  return metrics;
+}
+
 function cloneJson(value) {
   return JSON.parse(JSON.stringify(value));
+}
+
+function sha256Text(value) {
+  return createHash("sha256").update(value).digest("hex");
 }
 
 async function exists(path) {

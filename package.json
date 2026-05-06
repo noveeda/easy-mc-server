@@ -10,6 +10,16 @@
   ],
   "scripts": {
     "mvp0:preview": "node scripts/mvp0-local-preview.mjs",
+    "m1:artifacts": "node scripts/build-first-party-fabric-mods.mjs",
+    "m1:release-assets": "node scripts/prepare-m1-release-assets.mjs",
+    "m1:readiness": "node scripts/check-m1-mrpack-readiness.mjs",
+    "m1:mrpack": "node scripts/build-private-mrpack.mjs",
+    "desktop:check": "node scripts/desktop-cargo.mjs check",
+    "desktop:dev": "node scripts/desktop-dev-hot.mjs",
+    "desktop:dev:plain": "node scripts/desktop-cargo.mjs run",
+    "desktop:build": "node scripts/desktop-cargo.mjs build",
+    "desktop:smoke": "node scripts/desktop-command-smoke.mjs",
+    "desktop:real-smoke": "node scripts/desktop-real-runtime-smoke.mjs",
     "test": "node scripts/verify-static-prototypes.mjs && node --test --test-isolation=none tests/smoke/*.test.mjs apps/*/tests/*.test.mjs packages/*/tests/*.test.mjs services/*/tests/*.test.mjs mods/*/tests/*.test.mjs"
   }
 }

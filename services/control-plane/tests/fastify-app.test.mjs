@@ -119,6 +119,22 @@ test("Fastify app exposes the host invite approval and service session flow", as
   assert.match(invite.body.invite.handle, /^invite_handle_/);
   assert.equal(typeof invite.body.invite.expiresAt, "number");
 
+  const heartbeat = await injectJson(app, {
+    method: "POST",
+    url: `/host/rooms/${room.body.room.id}/heartbeat`,
+    headers: trustedHostHeaders()
+  });
+  assert.deepEqual(heartbeat, {
+    status: 200,
+    body: {
+      room: {
+        id: room.body.room.id,
+        state: "open",
+        hostOnline: true
+      }
+    }
+  });
+
   const safeInvite = await injectJson(app, {
     method: "GET",
     url: `/friend/invites/${invite.body.invite.handle}?utm_source=ignored`

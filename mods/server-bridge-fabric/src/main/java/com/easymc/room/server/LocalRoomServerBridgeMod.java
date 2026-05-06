@@ -1,9 +1,12 @@
 package com.easymc.room.server;
 
-public final class LocalRoomServerBridgeMod {
+import net.fabricmc.api.DedicatedServerModInitializer;
+
+public final class LocalRoomServerBridgeMod implements DedicatedServerModInitializer {
   public static final String MOD_ID = "easy_mc_room_server_bridge";
 
-  private LocalRoomServerBridgeMod() {
+  @Override
+  public void onInitializeServer() {
   }
 
   public static ServerBridgeDescriptor describeRuntime() {

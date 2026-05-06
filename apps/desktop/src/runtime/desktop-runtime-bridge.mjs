@@ -19,7 +19,8 @@ export const DesktopRuntimeBridgeFailureReasons = Object.freeze({
   FABRIC_DOWNLOAD_DISABLED: "fabric_download_disabled",
   JAVA_DETECTION_FAILED: "java_detection_failed",
   LIFECYCLE_FAILED: "lifecycle_failed",
-  MATERIALIZATION_FAILED: "materialization_failed"
+  MATERIALIZATION_FAILED: "materialization_failed",
+  SERVER_COMMAND_UNAVAILABLE: "server_command_unavailable"
 });
 
 const failureMessages = Object.freeze({
@@ -27,7 +28,8 @@ const failureMessages = Object.freeze({
   [DesktopRuntimeBridgeFailureReasons.FABRIC_DOWNLOAD_DISABLED]: "Finish room setup before opening this room.",
   [DesktopRuntimeBridgeFailureReasons.JAVA_DETECTION_FAILED]: "Install Java 21 or newer before opening this room.",
   [DesktopRuntimeBridgeFailureReasons.LIFECYCLE_FAILED]: "The room could not be opened.",
-  [DesktopRuntimeBridgeFailureReasons.MATERIALIZATION_FAILED]: "Prepare the room files before opening it."
+  [DesktopRuntimeBridgeFailureReasons.MATERIALIZATION_FAILED]: "Prepare the room files before opening it.",
+  [DesktopRuntimeBridgeFailureReasons.SERVER_COMMAND_UNAVAILABLE]: "Open the room before sending server commands."
 });
 
 export function createDesktopRuntimeBridge(runtimePlan, options = {}) {
@@ -40,6 +42,7 @@ export function createDesktopRuntimeBridge(runtimePlan, options = {}) {
   const lifecycleOptions = options.lifecycleOptions ?? options;
   const javaOptions = options.javaOptions ?? options;
   const fabricOptions = options.fabricOptions ?? options;
+  const materializeOptions = options.materializeOptions ?? options;
   const events = [];
 
   let activePlan = cloneJson(runtimePlan);
@@ -61,6 +64,7 @@ export function createDesktopRuntimeBridge(runtimePlan, options = {}) {
     activePlan = withDetectedJava(activePlan, javaResult.java);
 
     const materialized = await dependencies.materializeRoom(activePlan, {
+      ...materializeOptions,
       ...lifecycleOptions,
       ...prepareOptions.materializeOptions
     });
@@ -124,6 +128,7 @@ export function createDesktopRuntimeBridge(runtimePlan, options = {}) {
     }
 
     const materialized = await dependencies.materializeRoom(activePlan, {
+      ...materializeOptions,
       ...lifecycleOptions,
       ...openOptions.materializeOptions
     });
@@ -199,6 +204,46 @@ export function createDesktopRuntimeBridge(runtimePlan, options = {}) {
     });
   }
 
+  async function sendServerCommand(commandOptions = {}) {
+    const lifecycleStatus = lifecycleManager?.status?.();
+    if (!canSendServerCommand(lifecycleManager, lifecycleStatus)) {
+      return dto({
+        state: lifecycleStatus?.state ?? lastState,
+        summary: failureMessages[DesktopRuntimeBridgeFailureReasons.SERVER_COMMAND_UNAVAILABLE],
+        failure: wrapFailure(
+          DesktopRuntimeBridgeFailureReasons.SERVER_COMMAND_UNAVAILABLE,
+          { state: lifecycleStatus?.state ?? lastState }
+        ),
+        runtimePlan: activePlan,
+        metrics: lifecycleStatus?.metrics,
+        events: mergedLifecycleEvents(lifecycleStatus)
+      });
+    }
+
+    const sent = await lifecycleManager.sendCommand(commandOptions);
+    const nextStatus = lifecycleManager.status?.();
+    if (!sent.ok) {
+      return dto({
+        state: nextStatus?.state ?? lastState,
+        summary: sent.failure?.message,
+        failure: sent.failure,
+        runtimePlan: activePlan,
+        metrics: nextStatus?.metrics,
+        events: mergedLifecycleEvents(nextStatus)
+      });
+    }
+
+    lastFailure = null;
+    lastState = nextStatus?.state ?? sent.state ?? lastState;
+    return dto({
+      state: lastState,
+      summary: "Server command sent.",
+      runtimePlan: activePlan,
+      metrics: nextStatus?.metrics,
+      events: mergedLifecycleEvents(nextStatus)
+    });
+  }
+
   function status() {
     const lifecycleStatus = lifecycleManager?.status?.();
     const state = lifecycleStatus?.state ?? lastState;
@@ -208,16 +253,21 @@ export function createDesktopRuntimeBridge(runtimePlan, options = {}) {
       summary: summaryForState(state, lastFailure),
       failure: lastFailure,
       runtimePlan: activePlan,
-      events: [
-        ...events,
-        ...sanitizeEvents(lifecycleStatus?.events ?? [])
-      ]
+      metrics: lifecycleStatus?.metrics,
+      events: mergedLifecycleEvents(lifecycleStatus)
     });
   }
 
   function recordLifecycleEvent(event) {
     events.push(sanitizeEvent(event));
     options.onEvent?.(sanitizeEvent(event));
+  }
+
+  function mergedLifecycleEvents(lifecycleStatus) {
+    return [
+      ...events,
+      ...sanitizeEvents(lifecycleStatus?.events ?? [])
+    ];
   }
 
   function rememberFailure(state, failure) {
@@ -247,6 +297,7 @@ export function createDesktopRuntimeBridge(runtimePlan, options = {}) {
     openRoom,
     closeRoom,
     restartRoom,
+    sendServerCommand,
     status
   };
 }
@@ -257,6 +308,7 @@ function dto(input) {
     summary: input.summary ?? summaryForState(input.state, input.failure),
     ...(input.failure ? { failure: sanitizeFailure(input.failure) } : {}),
     ...(input.runtimePlan ? { runtimePlan: summarizeRuntimePlan(input.runtimePlan) } : {}),
+    ...(input.metrics ? { metrics: sanitizeValue(input.metrics) } : {}),
     ...(input.events ? { events: sanitizeEvents(input.events) } : {}),
     ...(input.detail ? { detail: sanitizeValue(input.detail) } : {})
   };
@@ -286,6 +338,20 @@ function isOpenState(state) {
     HostRuntimeStates.STOPPING,
     HostRuntimeStates.RESTARTING
   ].includes(state);
+}
+
+function canAcceptServerCommandState(state) {
+  return [
+    HostRuntimeStates.STARTING,
+    HostRuntimeStates.RUNNING,
+    HostRuntimeStates.RESTARTING
+  ].includes(state);
+}
+
+function canSendServerCommand(lifecycleManager, lifecycleStatus) {
+  return Boolean(lifecycleManager)
+    && lifecycleStatus?.hasProcess === true
+    && canAcceptServerCommandState(lifecycleStatus?.state);
 }
 
 function wrapFailure(reason, cause = {}) {

@@ -1,10 +1,39 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { RiskLabels, classifySide, evaluateCompatibility, resolveDependencyPlan } from "../src/index.mjs";
+import { RiskDisplayLabels, RiskLabels, classifySide, evaluateCompatibility, resolveDependencyPlan } from "../src/index.mjs";
+
+function requiredMetadata(projectId) {
+  return {
+    source: {
+      provider: "modrinth",
+      projectId,
+      versionId: `${projectId}-version`,
+      projectUrl: `https://modrinth.com/mod/${projectId}`
+    },
+    sourceUrl: `https://modrinth.com/mod/${projectId}`,
+    license: "MIT",
+    permission: {
+      redistribution: "original_url_only",
+      use: "allowed_by_license"
+    },
+    files: [
+      {
+        filename: `${projectId}.jar`,
+        url: `https://cdn.modrinth.com/data/${projectId}/versions/${projectId}-version/${projectId}.jar`,
+        size: 12345,
+        hashes: {
+          sha1: `${projectId}-sha1`,
+          sha512: `${projectId}-sha512`
+        }
+      }
+    ]
+  };
+}
 
 const fabricApi = {
   projectId: "fabric-api",
   title: "Fabric API",
+  ...requiredMetadata("fabric-api"),
   side: { client: "required", server: "required" },
   version: {
     gameVersions: ["1.21.1"],
@@ -16,6 +45,7 @@ const fabricApi = {
 const lithium = {
   projectId: "lithium",
   title: "Lithium",
+  ...requiredMetadata("lithium"),
   side: { client: "unsupported", server: "required" },
   version: {
     gameVersions: ["1.21.1"],
@@ -27,6 +57,7 @@ const lithium = {
 const ferriteCore = {
   projectId: "ferrite-core",
   title: "FerriteCore",
+  ...requiredMetadata("ferrite-core"),
   side: { client: "required", server: "required" },
   version: {
     gameVersions: ["1.21.1"],
@@ -43,9 +74,39 @@ test("compatible Fabric mods are labeled high_confidence", () => {
   });
 
   assert.equal(result.label, RiskLabels.HIGH_CONFIDENCE);
+  assert.equal(result.userLabel, RiskDisplayLabels[RiskLabels.HIGH_CONFIDENCE]);
+  assert.equal(result.verdict.canRecommend, true);
   assert.deepEqual(result.missingDependencies, []);
   assert.deepEqual(result.conflicts, []);
+  assert.deepEqual(result.metadataIssues, []);
   assert.equal(result.sideClassifications["fabric-api"], "both_sides");
+});
+
+test("incomplete selected mod metadata becomes likely_fail and cannot recommend", () => {
+  const result = evaluateCompatibility({
+    selectedMods: [
+      {
+        ...fabricApi,
+        projectId: "incomplete-mod",
+        title: "Incomplete Mod",
+        sourceUrl: "",
+        side: undefined,
+        files: []
+      }
+    ],
+    minecraftVersion: "1.21.1",
+    loader: "fabric"
+  });
+
+  assert.equal(result.label, RiskLabels.LIKELY_FAIL);
+  assert.equal(result.userLabel, "실패 가능");
+  assert.equal(result.verdict.canRecommend, false);
+  assert.equal(result.sideClassifications["incomplete-mod"], "unknown");
+  assert.deepEqual(
+    result.metadataIssues[0].missing.map((issue) => issue.field).sort(),
+    ["files", "side", "sourceUrl"]
+  );
+  assert.match(result.advice, /missing metadata/);
 });
 
 test("missing dependencies become likely_fail with automatic add suggestions", () => {
@@ -66,6 +127,21 @@ test("missing dependencies become likely_fail with automatic add suggestions", (
     }
   ]);
   assert.deepEqual(result.resolvedModIds, ["lithium", "fabric-api"]);
+});
+
+test("dependency candidates with incomplete metadata are not automatic add suggestions", () => {
+  const result = evaluateCompatibility({
+    selectedMods: [lithium],
+    catalog: [{ ...fabricApi, files: [] }],
+    minecraftVersion: "1.21.1",
+    loader: "fabric"
+  });
+
+  assert.equal(result.label, RiskLabels.LIKELY_FAIL);
+  assert.deepEqual(result.automaticAddSuggestions, []);
+  assert.equal(result.missingDependencies[0].projectId, "fabric-api");
+  assert.match(result.missingDependencies[0].reason, /metadata is incomplete/);
+  assert.deepEqual(result.resolvedModIds, ["lithium"]);
 });
 
 test("unavailable required dependencies become likely_fail", () => {
@@ -94,6 +170,7 @@ test("unsupported Minecraft or loader versions become likely_fail with version a
         ...fabricApi,
         projectId: "old-fabric-api",
         title: "Old Fabric API",
+        ...requiredMetadata("old-fabric-api"),
         version: {
           gameVersions: ["1.20.1"],
           loaders: ["quilt"],

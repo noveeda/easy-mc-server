@@ -121,6 +121,7 @@ export function createHostRuntimePlan(input = {}) {
       },
       fabric: {
         loaderVersion: loader.loader.version,
+        ...(loader.loader.installerVersion ? { installerVersion: loader.loader.installerVersion } : {}),
         installerVerified: true,
         installerSha256: loader.loader.installerSha256,
         serverJarSha256: loader.loader.serverJarSha256,
@@ -200,6 +201,7 @@ export function resolveFabricLoader(input = {}) {
     loader: {
       minecraftVersion: loader.minecraftVersion ?? input.minecraftVersion,
       version: loader.version,
+      ...(loader.installerVersion ? { installerVersion: loader.installerVersion } : {}),
       installerSha256: loader.installerSha256,
       serverJarSha256: loader.serverJarSha256,
       launcherJar
@@ -272,14 +274,17 @@ export function createEulaPlan(eula = {}, layout = {}) {
 }
 
 export function createServerPropertiesPlan(serverProperties = {}, layout = {}) {
+  const maxPlayers = safeInteger(serverProperties.maxPlayers, 1, 10, 10);
+  const port = safeInteger(serverProperties.port, 1024, 65535, 25565);
+  const motd = safePropertyText(serverProperties.motd, "Cozy Performance Room", 80);
   const values = {
     "enable-command-block": "false",
     "enforce-secure-profile": "true",
-    "max-players": String(serverProperties.maxPlayers ?? 10),
-    "motd": serverProperties.motd ?? "Cozy Performance Room",
+    "max-players": String(maxPlayers),
+    "motd": motd,
     "online-mode": "true",
     "server-ip": "",
-    "server-port": String(serverProperties.port ?? 25565),
+    "server-port": String(port),
     "white-list": "true"
   };
 
@@ -304,7 +309,10 @@ export function createModInstallPlan(pack = {}, layout = {}) {
       id: mod.id,
       fileName: mod.fileName,
       sha256: mod.sha256,
-      source: mod.source,
+      source: mod.source ?? joinPath(layout.downloads, mod.sourceFileName ?? mod.fileName),
+      downloadUrl: mod.downloadUrl,
+      provider: mod.provider,
+      expectedFileSize: mod.fileSize,
       target: joinPath(layout.mods, mod.fileName),
       verified: checksumsMatch(mod.expectedSha256 ?? mod.sha256, mod.sha256)
     }))
@@ -365,12 +373,39 @@ export function createRedactedLogEvent(input = {}) {
 }
 
 export function redactHostLogLine(line) {
-  return String(line)
+  const text = String(line);
+  if (/^[A-Za-z]:[\\/]/.test(text) || /^\/(?:Users|home|var|tmp|opt)\//.test(text)) {
+    return "[redacted-path]";
+  }
+
+  return text
+    .replaceAll(/\b(?:\d{1,3}\.){3}\d{1,3}(?::\d{1,5})?\b/g, REDACTED)
+    .replaceAll(/\[(?:[0-9a-f]{0,4}:){2,}[0-9a-f:]{0,}\](?::\d{1,5})?/gi, REDACTED)
+    .replaceAll(/\b[A-Za-z]:[\\/][^\s"'<>]+/g, "[redacted-path]")
+    .replaceAll(/(?:^|\s)\/(?:Users|home|var|tmp|opt)\/[^\s"'<>]+/g, " [redacted-path]")
     .replaceAll(/(token=)[^\s&]+/gi, `$1${REDACTED}`)
     .replaceAll(/(invite=)[^\s&]+/gi, `$1${REDACTED}`)
     .replaceAll(/(secret=)[^\s&]+/gi, `$1${REDACTED}`)
     .replaceAll(/([A-Z0-9._%+-]+)@([A-Z0-9.-]+\.[A-Z]{2,})/gi, REDACTED)
     .replaceAll(/\b([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\b/gi, REDACTED);
+}
+
+function safeInteger(value, min, max, fallback) {
+  const number = Number(value);
+  if (!Number.isInteger(number) || number < min || number > max) {
+    return fallback;
+  }
+
+  return number;
+}
+
+function safePropertyText(value, fallback, maxLength) {
+  const text = String(value ?? fallback);
+  if (/[\r\n\0]/.test(text)) {
+    return fallback;
+  }
+
+  return text.slice(0, maxLength);
 }
 
 export function createBridgeApprovalEvent(input = {}) {

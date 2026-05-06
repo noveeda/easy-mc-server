@@ -1,4 +1,5 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { createConnection } from "node:net";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -92,8 +93,10 @@ async function createPreviewRuntimePlan() {
 
   for (const mod of mods) {
     const source = `${previewRoot}/cache/downloads/${mod.fileName}`;
-    await writeFile(source, `MVP-0 local preview placeholder for ${mod.id}\n`, "utf8");
+    const contents = `MVP-0 local preview placeholder for ${mod.id}\n`;
+    await writeFile(source, contents, "utf8");
     mod.source = source;
+    mod.sha256 = createHash("sha256").update(contents).digest("hex");
   }
 
   const runtime = createHostRuntimePlan({

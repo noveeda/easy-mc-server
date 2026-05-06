@@ -1,6 +1,16 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { catalogEntryHasRequiredMetadata, createCuratedPack, normalizeModrinthVersion } from "../src/index.mjs";
+import {
+  CatalogProviders,
+  MetadataStates,
+  RecommendationStates,
+  catalogEntryHasRequiredMetadata,
+  createCatalogRecommendation,
+  createCuratedPack,
+  evaluateCatalogEntryMetadata,
+  normalizeModrinthVersion,
+  toCompatibilityInput
+} from "../src/index.mjs";
 
 const fabricApiProject = {
   id: "P7dR8mSH",
@@ -43,12 +53,16 @@ test("normalizes Modrinth-like project and version metadata", () => {
 
   assert.equal(entry.projectId, "P7dR8mSH");
   assert.equal(entry.slug, "fabric-api");
+  assert.equal(entry.source.provider, CatalogProviders.MODRINTH);
+  assert.equal(entry.source.projectId, "P7dR8mSH");
+  assert.equal(entry.metadataSource, CatalogProviders.MODRINTH);
   assert.equal(entry.license, "Apache-2.0");
   assert.deepEqual(entry.side, { client: "required", server: "required" });
   assert.deepEqual(entry.version.gameVersions, ["1.21.1"]);
   assert.deepEqual(entry.version.loaders, ["fabric"]);
   assert.equal(entry.files[0].url, fabricApiVersion.files[0].url);
   assert.deepEqual(entry.files[0].hashes, fabricApiVersion.files[0].hashes);
+  assert.equal(entry.metadataCompleteness.state, MetadataStates.COMPLETE);
   assert.equal(catalogEntryHasRequiredMetadata(entry), true);
 });
 
@@ -60,6 +74,54 @@ test("detects incomplete metadata before recommendation", () => {
   });
 
   assert.equal(catalogEntryHasRequiredMetadata(entry), false);
+  assert.equal(evaluateCatalogEntryMetadata(entry).recommendationState, RecommendationStates.BLOCKED);
+  assert.deepEqual(
+    evaluateCatalogEntryMetadata(entry)
+      .missing.map((issue) => issue.field)
+      .sort(),
+    ["files[0].hashes.sha512", "license", "sourceUrl"]
+  );
+});
+
+test("missing side metadata is not normalized into a recommendable entry", () => {
+  const entry = normalizeModrinthVersion({
+    project: {
+      ...fabricApiProject,
+      client_side: undefined,
+      server_side: undefined
+    },
+    version: fabricApiVersion
+  });
+
+  assert.equal(entry.metadataCompleteness.complete, false);
+  assert.equal(catalogEntryHasRequiredMetadata(entry), false);
+  assert.equal(evaluateCatalogEntryMetadata(entry).missing.some((issue) => issue.field === "side"), true);
+});
+
+test("catalog recommendations expose app-friendly compatibility input and fail-closed state", () => {
+  const completeEntry = normalizeModrinthVersion({
+    project: fabricApiProject,
+    version: fabricApiVersion
+  });
+  const blockedEntry = normalizeModrinthVersion({
+    project: { ...fabricApiProject, source_url: "" },
+    version: { ...fabricApiVersion, files: [] }
+  });
+
+  const recommendation = createCatalogRecommendation({
+    entry: completeEntry,
+    category: "popular",
+    rank: 1,
+    reason: "Common Fabric dependency."
+  });
+  const blockedRecommendation = createCatalogRecommendation({ entry: blockedEntry });
+
+  assert.equal(recommendation.recommendation.state, RecommendationStates.READY);
+  assert.equal(recommendation.compatibilityInput.projectId, "P7dR8mSH");
+  assert.equal(recommendation.compatibilityInput.source.provider, CatalogProviders.MODRINTH);
+  assert.equal(blockedRecommendation.recommendation.state, RecommendationStates.BLOCKED);
+  assert.equal(blockedRecommendation.recommendation.canRecommend, false);
+  assert.equal(toCompatibilityInput(blockedEntry).metadataCompleteness.complete, false);
 });
 
 test("curated pack output preserves original URLs and hashes", () => {
@@ -84,4 +146,24 @@ test("curated pack output preserves original URLs and hashes", () => {
     minecraft: "1.21.1",
     "fabric-loader": "0.19.2"
   });
+});
+
+test("curated pack generation rejects incomplete metadata", () => {
+  const entry = normalizeModrinthVersion({
+    project: fabricApiProject,
+    version: { ...fabricApiVersion, files: [] }
+  });
+
+  assert.throws(
+    () =>
+      createCuratedPack({
+        name: "Unsafe Pack",
+        versionId: "unsafe-pack",
+        summary: "Should fail closed.",
+        minecraftVersion: "1.21.1",
+        fabricLoaderVersion: "0.19.2",
+        mods: [entry]
+      }),
+    /incomplete metadata/
+  );
 });

@@ -93,6 +93,7 @@ const normalizedSensitiveKeys = new Set([
   "devicesignal",
   "ip",
   "ipaddress",
+  "invitelink",
   "inviteurl",
   "invitetoken",
   "minecraftaccesstoken",
@@ -204,6 +205,28 @@ const auditRequirements = Object.freeze({
 });
 
 const sensitiveKeyPattern = /(^|_)(accessToken|authorization|cookie|credential|deviceSignal|ip|ipAddress|inviteToken|minecraftAccessToken|password|refreshToken|secret|sessionCredential|sessionKey|sessionToken|token)(_|$)/i;
+const redactionRules = Object.freeze([
+  Object.freeze({
+    pattern: /https?:\/\/[^\s"'<>]*(?:\/invite(?:[/?#]|$)|\/invites(?:[/?#]|$)|\/friend\/invites(?:[/?#]|$))[^\s"'<>]*/gi,
+    replacement: REDACTED_INVITE_URL
+  }),
+  Object.freeze({
+    pattern: /\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi,
+    replacement: `$1 ${REDACTED_CREDENTIAL}`
+  }),
+  Object.freeze({
+    pattern: /\b(invite|inviteToken|token|sessionKey|session|access_token|refresh_token|password|credential|secret)=([^&\s"'<>]+)/gi,
+    replacement: `$1=${REDACTED_CREDENTIAL}`
+  }),
+  Object.freeze({
+    pattern: /\b(invite token|session key|session credential|access token|password|credential|secret)\s*[:=]\s*["']?[^"',}\s]+/gi,
+    replacement: `$1: ${REDACTED_CREDENTIAL}`
+  }),
+  Object.freeze({
+    pattern: /\b(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?\b/g,
+    replacement: REDACTED_IP
+  })
+]);
 
 export function buildInviteRecoveryState(state, details = {}) {
   const normalizedState = state === "valid" ? InviteRecoveryStates.ACTIVE : state;
@@ -489,12 +512,14 @@ function redactValue(value, key = "") {
 }
 
 function redactString(value) {
-  return redactIpLiterals(value
-    .replace(/https?:\/\/[^\s"'<>]*(?:\/invite\/|\/invites\/|\/friend\/invites\/)[^\s"'<>]*/gi, REDACTED_INVITE_URL)
-    .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, `$1 ${REDACTED_CREDENTIAL}`)
-    .replace(/\b(inviteToken|token|sessionKey|session|access_token|refresh_token|password|credential|secret)=([^&\s"'<>]+)/gi, `$1=${REDACTED_CREDENTIAL}`)
-    .replace(/\b(invite token|session key|session credential|access token|password|credential|secret)\s*[:=]\s*["']?[^"',}\s]+/gi, `$1: ${REDACTED_CREDENTIAL}`)
-    .replace(/\b(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?\b/g, REDACTED_IP));
+  return redactIpLiterals(applyRedactionRules(value));
+}
+
+function applyRedactionRules(value) {
+  return redactionRules.reduce(
+    (redacted, rule) => redacted.replace(rule.pattern, rule.replacement),
+    value
+  );
 }
 
 function redactIpLiterals(value) {

@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
@@ -81,7 +82,7 @@ test("desktop runtime bridge blocks open when Java is missing", async () => {
     assert.equal(result.state, "blocked");
     assert.equal(result.failure.reason, DesktopRuntimeBridgeFailureReasons.JAVA_DETECTION_FAILED);
     assert.equal(result.failure.message, "Install Java 21 or newer before opening this room.");
-    assert.equal(result.failure.detail.detail.searchedCandidates[0], "C:/secret/token=[redacted]");
+    assert.equal(result.failure.detail.detail.searchedCandidates[0], "[redacted-path]");
     assert.equal(startCalls, 0);
   } finally {
     await rm(fixture.root, { recursive: true, force: true });
@@ -235,6 +236,52 @@ test("desktop runtime bridge close stops the active lifecycle manager", async ()
   }
 });
 
+test("desktop runtime bridge can close and reopen the same room", async () => {
+  const fixture = await createRuntimeFixture();
+  let running = false;
+  let startCalls = 0;
+  let stopCalls = 0;
+
+  try {
+    const bridge = createDesktopRuntimeBridge(fixture.plan, {
+      detectJava: async () => ({
+        ok: true,
+        java: createDetectedJava(fixture.javaPath)
+      }),
+      materializeRoom: async () => ({ ok: true, writtenFiles: [], preservedFiles: [], copiedMods: [], pendingMods: [] }),
+      createLifecycleManager: () => ({
+        async start() {
+          startCalls += 1;
+          running = true;
+          return { ok: true, state: HostRuntimeStates.RUNNING };
+        },
+        async stop() {
+          stopCalls += 1;
+          running = false;
+          return { ok: true, state: HostRuntimeStates.STOPPED };
+        },
+        status() {
+          return {
+            state: running ? HostRuntimeStates.RUNNING : HostRuntimeStates.STOPPED,
+            hasProcess: running,
+            events: []
+          };
+        }
+      })
+    });
+
+    assert.equal((await bridge.openRoom()).state, HostRuntimeStates.RUNNING);
+    assert.equal((await bridge.closeRoom()).state, HostRuntimeStates.STOPPED);
+    assert.equal((await bridge.openRoom()).state, HostRuntimeStates.RUNNING);
+
+    assert.equal(startCalls, 2);
+    assert.equal(stopCalls, 1);
+    assert.equal(bridge.status().state, HostRuntimeStates.RUNNING);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
 test("desktop runtime bridge restart uses the active lifecycle manager", async () => {
   const fixture = await createRuntimeFixture();
   let restartCalls = 0;
@@ -277,13 +324,95 @@ test("desktop runtime bridge restart uses the active lifecycle manager", async (
   }
 });
 
+test("desktop runtime bridge sends console commands through active lifecycle manager", async () => {
+  const fixture = await createRuntimeFixture();
+  const sentCommands = [];
+  const lifecycleEvents = [];
+  const metrics = {
+    pid: 4321,
+    source: "test-process",
+    measuredAt: "2026-05-02T00:00:00.000Z",
+    cpu: { processPercent: 10.5 },
+    memory: {
+      workingSetBytes: 256 * 1024 * 1024,
+      totalBytes: 8 * 1024 * 1024 * 1024,
+      processPercent: 3.125
+    }
+  };
+
+  try {
+    const bridge = createDesktopRuntimeBridge(fixture.plan, {
+      detectJava: async () => ({
+        ok: true,
+        java: createDetectedJava(fixture.javaPath)
+      }),
+      materializeRoom: async () => ({ ok: true, writtenFiles: [], preservedFiles: [], copiedMods: [], pendingMods: [] }),
+      createLifecycleManager: () => ({
+        async start() {
+          return { ok: true, state: HostRuntimeStates.RUNNING };
+        },
+        async stop() {
+          return { ok: true, state: HostRuntimeStates.STOPPED };
+        },
+        async sendCommand(request) {
+          sentCommands.push(request.command);
+          lifecycleEvents.push({
+            type: "runtime.command",
+            line: request.command,
+            sequence: lifecycleEvents.length + 1
+          });
+          return { ok: true, state: HostRuntimeStates.RUNNING };
+        },
+        status() {
+          return {
+            state: HostRuntimeStates.RUNNING,
+            hasProcess: true,
+            metrics,
+            events: lifecycleEvents
+          };
+        }
+      })
+    });
+
+    await bridge.openRoom();
+    const result = await bridge.sendServerCommand({ command: "say hello" });
+
+    assert.equal(result.state, HostRuntimeStates.RUNNING);
+    assert.equal(result.summary, "Server command sent.");
+    assert.equal(result.metrics.pid, 4321);
+    assert.equal(result.metrics.cpu.processPercent, 10.5);
+    assert.equal(result.metrics.memory.processPercent, 3.125);
+    assert.deepEqual(sentCommands, ["say hello"]);
+    assert.deepEqual(result.events, [
+      { type: "runtime.command", line: "say hello", sequence: 1 }
+    ]);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("desktop runtime bridge blocks console commands before a room is running", async () => {
+  const fixture = await createRuntimeFixture();
+
+  try {
+    const bridge = createDesktopRuntimeBridge(fixture.plan);
+    const result = await bridge.sendServerCommand({ command: "say hello" });
+
+    assert.equal(result.state, HostRuntimeStates.STOPPED);
+    assert.equal(result.failure.reason, DesktopRuntimeBridgeFailureReasons.SERVER_COMMAND_UNAVAILABLE);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
 test("desktop runtime bridge redacts lifecycle events and status DTOs", async () => {
   const fixture = await createRuntimeFixture();
+  const streamedEvents = [];
   const lifecycleEvents = [
     {
       type: "runtime.log",
       roomId: "room-a",
-      line: "token=abc invite=join-1 user=host@example.test secret=value",
+      line: "token=abc invite=join-1 user=host@example.test secret=value ip=192.168.0.12:51234 path=C:/Users/Alice/AppData/server.log",
       secret: "do-not-return"
     }
   ];
@@ -295,6 +424,9 @@ test("desktop runtime bridge redacts lifecycle events and status DTOs", async ()
         java: createDetectedJava("C:/Java/jdk-21/bin/java.exe")
       }),
       materializeRoom: async () => ({ ok: true, writtenFiles: [], preservedFiles: [], copiedMods: [], pendingMods: [] }),
+      onEvent(event) {
+        streamedEvents.push(event);
+      },
       createLifecycleManager: (_runtimePlan, lifecycleOptions) => ({
         async start() {
           lifecycleOptions.onEvent?.(lifecycleEvents[0]);
@@ -318,10 +450,15 @@ test("desktop runtime bridge redacts lifecycle events and status DTOs", async ()
 
     assert.equal(status.state, HostRuntimeStates.RUNNING);
     assert.equal(status.runtimePlan.java.path, undefined);
-    assert.equal(status.events[0].line, "token=[redacted] invite=[redacted] user=[redacted] secret=[redacted]");
+    assert.equal(status.events[0].line, "token=[redacted] invite=[redacted] user=[redacted] secret=[redacted] ip=[redacted] path=[redacted-path]");
     assert.equal(status.events[0].secret, undefined);
+    assert.equal(streamedEvents.length, 1);
+    assert.equal(streamedEvents[0].line, "token=[redacted] invite=[redacted] user=[redacted] secret=[redacted] ip=[redacted] path=[redacted-path]");
+    assert.equal(streamedEvents[0].secret, undefined);
     assert.equal(JSON.stringify(status).includes("host@example.test"), false);
     assert.equal(JSON.stringify(status).includes("join-1"), false);
+    assert.equal(JSON.stringify(status).includes("192.168.0.12"), false);
+    assert.equal(JSON.stringify(status).includes("C:/Users/Alice"), false);
     assert.equal(JSON.stringify(status).includes("do-not-return"), false);
   } finally {
     await rm(fixture.root, { recursive: true, force: true });
@@ -333,9 +470,11 @@ async function createRuntimeFixture() {
   const roomRoot = `${root}/rooms/room-a`;
   const modSource = `${root}/cache/downloads/fabric-api.jar`;
   const javaPath = `${root}/runtime/java/bin/java.exe`;
+  const modContents = "fake mod jar";
+  const modSha256 = sha256Text(modContents);
 
   await mkdir(dirname(modSource), { recursive: true });
-  await writeFile(modSource, "fake mod jar", "utf8");
+  await writeFile(modSource, modContents, "utf8");
 
   const runtime = createHostRuntimePlan({
     room: {
@@ -378,8 +517,8 @@ async function createRuntimeFixture() {
         {
           id: "fabric-api",
           fileName: "fabric-api.jar",
-          sha256: "fabric-api-sha",
-          expectedSha256: "fabric-api-sha",
+          sha256: modSha256,
+          expectedSha256: modSha256,
           source: modSource
         }
       ]
@@ -406,4 +545,8 @@ function createDetectedJava(path) {
     vendor: "Test JDK",
     source: "configuredPath"
   };
+}
+
+function sha256Text(value) {
+  return createHash("sha256").update(value).digest("hex");
 }

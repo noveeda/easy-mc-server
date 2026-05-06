@@ -107,6 +107,7 @@ test("router adapter exposes the current control-plane route table", () => {
 
   assert.deepEqual(adapter.routes(), [
     { method: "POST", url: "/host/rooms" },
+    { method: "POST", url: "/host/rooms/:roomId/heartbeat" },
     { method: "POST", url: "/host/rooms/:roomId/invites" },
     { method: "POST", url: "/host/invites/:inviteHandle/revoke" },
     { method: "GET", url: "/friend/invites/:inviteHandle" },
@@ -194,7 +195,7 @@ test("router adapter can register routes on a minimal Fastify-like app", async (
   assert.equal(firstRouteResponse.status, 201);
   assertNoSensitiveFields(firstRouteResponse.body);
 
-  const inviteRouteResponse = await registered[1].handler({
+  const inviteRouteResponse = await registered[2].handler({
     method: "POST",
     url: `/host/rooms/${firstRouteResponse.body.room.id}/invites`,
     headers: {

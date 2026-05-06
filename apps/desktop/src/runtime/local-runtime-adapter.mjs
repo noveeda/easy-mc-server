@@ -32,6 +32,7 @@ export function createRoomMaterializationPlan(runtimePlan = {}) {
     plan: {
       type: "room.materialize",
       roomId: runtimePlan.room.id,
+      appDataRoot: runtimePlan.layout.appDataRoot,
       directories: uniquePaths([
         runtimePlan.files.root,
         runtimePlan.layout.runtime,
@@ -93,8 +94,11 @@ export function createRoomMaterializationPlan(runtimePlan = {}) {
         modId: entry.id,
         fileName: entry.fileName,
         source: entry.source,
+        downloadUrl: entry.downloadUrl,
+        provider: entry.provider,
         target: entry.target,
         expectedSha256: entry.sha256,
+        expectedFileSize: entry.expectedFileSize,
         verified: entry.verified
       })),
       safety: {
@@ -119,8 +123,13 @@ export function createFabricServerDownloadPlan(runtimePlan = {}, sources = {}) {
     return fail(LocalRuntimeAdapterFailureReasons.FABRIC_CHECKSUM_MISSING);
   }
 
+  const installerVersion = sources.fabricInstallerVersion ?? runtimePlan.fabric.installerVersion;
   const sourceUrl = sources.fabricServerJarUrl
-    ?? `https://meta.fabricmc.net/v2/versions/loader/${runtimePlan.room.minecraftVersion}/${runtimePlan.fabric.loaderVersion}/server/jar`;
+    ?? (
+      installerVersion
+        ? `https://meta.fabricmc.net/v2/versions/loader/${runtimePlan.room.minecraftVersion}/${runtimePlan.fabric.loaderVersion}/${installerVersion}/server/jar`
+        : `https://meta.fabricmc.net/v2/versions/loader/${runtimePlan.room.minecraftVersion}/${runtimePlan.fabric.loaderVersion}/server/jar`
+    );
 
   if (!sourceUrl.startsWith(FABRIC_META_BASE_URL)) {
     return fail(LocalRuntimeAdapterFailureReasons.UNKNOWN_FABRIC_SOURCE);
@@ -180,7 +189,7 @@ export function createLocalServerProcessIntent(runtimePlan = {}, action = HostRu
         },
         healthCheck: {
           readyLogPattern: "Done",
-          crashLogPattern: "crash|exception|failed",
+          crashLogPattern: "\\bERROR\\b|\\bException\\b|\\bFailed\\b|Crash report|crashed|Caused by:",
           bridgeHealthEvent: "bridge.health"
         },
         requires: [
